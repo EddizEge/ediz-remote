@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known synthetic redaction-test sentinel; not a real credential"
+condition = "AND"
+paths = ['''^scripts/safe-output\.test\.mjs$''']
+regexTarget = "line"
+regexes = ['''ER_SENTINEL_TURN_SECRET_12345678901234567890''']
