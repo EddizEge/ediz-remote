@@ -1,0 +1,45 @@
+services:
+  coturn:
+    image: ${EDIZ_REMOTE_COTURN_IMAGE:?Run npm run security:containers and use the generated deployment.env}
+    pull_policy: never
+    labels:
+      org.ediz-remote.security-audit: ${EDIZ_REMOTE_DEPLOYMENT_VALIDATED:?Run npm run security:container:deploy}
+      org.ediz-remote.security-audit-image: ${EDIZ_REMOTE_COTURN_IMAGE:?Run npm run security:containers and use the generated deployment.env}
+    container_name: ediz-remote-coturn
+    restart: unless-stopped
+    network_mode: host
+    user: "1000:1000"
+    read_only: true
+    pids_limit: 256
+    environment:
+      TURN_SHARED_SECRET_FILE: /run/secrets/turn_shared_secret
+      TURN_REALM: ${TURN_REALM:?TURN_REALM is required}
+      TURN_EXTERNAL_IP: ${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}
+      TURN_RELAY_IP: ${TURN_RELAY_IP:?TURN_RELAY_IP is required}
+      TURN_MIN_PORT: ${TURN_MIN_PORT:-49160}
+      TURN_MAX_PORT: ${TURN_MAX_PORT:-49200}
+      TURN_ALLOW_PRIVATE_PEERS: ${TURN_ALLOW_PRIVATE_PEERS:-false}
+      TURN_LOG_OUTPUT: discard
+    secrets:
+      - source: turn_shared_secret
+        target: turn_shared_secret
+        mode: 0400
+    tmpfs:
+      - /tmp:size=4m,mode=0700,uid=1000,gid=1000
+      - /var/lib/coturn:size=16m,mode=0700,uid=1000,gid=1000
+    healthcheck:
+      test: ["CMD-SHELL", "turnutils_stunclient -p 3478 \"$${TURN_RELAY_IP}\" >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: "none"
+
+secrets:
+  turn_shared_secret:
+    file: ${COTURN_SHARED_SECRET_FILE_HOST:-../../secrets/turn-shared-secret.key}

@@ -1,0 +1,37 @@
+node_modules/
+dist/
+.tools/
+artifacts/
+.env
+.env.*
+!.env.example
+coverage/
+*.log
+audit-*.jsonl
+secrets/
+.DS_Store
+.idea/
+.vscode/
+
+# Native build output and local caches
+**/bin/
+**/obj/
+TestResults/
+*.tsbuildinfo
+*.user
+*.suo
+*.local
+
+# Credentials, signing material and operational data
+.npmrc
+**/.npmrc
+*.key
+*.pem
+*.pfx
+*.p12
+*.keystore
+credentials*.json
+*.audit.jsonl
+*.dmp
+*.dump
+*.bak

@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="420" viewBox="0 0 1280 420" role="img" aria-labelledby="title desc">
+  <title id="title">Ediz Remote</title>
+  <desc id="desc">Kodunu paylaş. İzin ver. Birlikte çöz. Windows için P2P öncelikli uzaktan destek.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0b1733"/><stop offset="1" stop-color="#12387b"/></linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#60a5fa"/><stop offset="1" stop-color="#38bdf8"/></linearGradient>
+    <pattern id="grid" width="48" height="48" patternUnits="userSpaceOnUse"><path d="M48 0H0V48" fill="none" stroke="#ffffff" stroke-opacity=".045"/></pattern>
+  </defs>
+  <rect width="1280" height="420" rx="24" fill="url(#bg)"/>
+  <rect width="1280" height="420" rx="24" fill="url(#grid)"/>
+  <circle cx="1140" cy="35" r="260" fill="#3b82f6" opacity=".08"/>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="64" y="74" fill="#93c5fd" font-size="14" font-weight="700" letter-spacing="3">SELF-HOSTED REMOTE SUPPORT</text>
+    <text x="60" y="168" fill="#ffffff" font-size="72" font-weight="700" letter-spacing="-2">Ediz Remote</text>
+    <text x="64" y="224" fill="#cbd5e1" font-size="26">Kodunu paylaş. İzin ver. Birlikte çöz.</text>
+    <rect x="64" y="274" width="148" height="38" rx="19" fill="#ffffff" fill-opacity=".08" stroke="#ffffff" stroke-opacity=".16"/>
+    <text x="138" y="299" text-anchor="middle" fill="#dbeafe" font-size="14">Windows 10 / 11</text>
+    <rect x="224" y="274" width="154" height="38" rx="19" fill="#ffffff" fill-opacity=".08" stroke="#ffffff" stroke-opacity=".16"/>
+    <text x="301" y="299" text-anchor="middle" fill="#dbeafe" font-size="14">WebRTC · P2P</text>
+    <rect x="390" y="274" width="128" height="38" rx="19" fill="#ffffff" fill-opacity=".08" stroke="#ffffff" stroke-opacity=".16"/>
+    <text x="454" y="299" text-anchor="middle" fill="#dbeafe" font-size="14">H.264 · GPU</text>
+    <text x="64" y="369" fill="#7fa4db" font-size="15">Görüntü cihazlar arasında. Kontrol senin elinde.</text>
+  </g>
+  <g fill="none" stroke="url(#accent)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="850" y="100" width="292" height="185" rx="16"/>
+    <path d="M850 245h292M972 285v35m48-35v35m-85 0h122"/>
+    <path d="M920 177h157m-24-24 24 24-24 24m-109 22H917m24-24-24 24 24 24" stroke-width="5"/>
+  </g>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <rect x="1020" y="72" width="165" height="40" rx="20" fill="#163961" stroke="#60a5fa" stroke-opacity=".4"/>
+    <circle cx="1043" cy="92" r="5" fill="#4ade80"/>
+    <text x="1060" y="97" fill="#dbeafe" font-size="14">Açık kullanıcı onayı</text>
+    <text x="996" y="361" text-anchor="middle" fill="#93c5fd" font-size="14" letter-spacing="2">DIRECT FIRST · TURN READY</text>
+  </g>
+</svg>

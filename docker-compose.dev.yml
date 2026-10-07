@@ -1,0 +1,52 @@
+services:
+  ediz-remote:
+    build: .
+    container_name: ediz-remote
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      ICE_STUN_URLS: ${ICE_STUN_URLS:-stun:stun.cloudflare.com:3478}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-}
+      TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-3600}
+      SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:-https://remote.edizegemercan.com.tr,https://app.ediz-remote.local}
+      TRUST_CLOUDFLARE_CONNECTING_IP: ${TRUST_CLOUDFLARE_CONNECTING_IP:-true}
+      SIGNALING_MAX_CONNECTIONS: ${SIGNALING_MAX_CONNECTIONS:-256}
+      SIGNALING_MAX_CONNECTIONS_PER_IP: ${SIGNALING_MAX_CONNECTIONS_PER_IP:-16}
+      SIGNALING_MAX_SESSIONS: ${SIGNALING_MAX_SESSIONS:-96}
+      SIGNALING_MAX_SESSIONS_PER_IP: ${SIGNALING_MAX_SESSIONS_PER_IP:-4}
+      SIGNALING_AUDIT_ENABLED: ${SIGNALING_AUDIT_ENABLED:-true}
+      SIGNALING_AUDIT_DIRECTORY: /var/lib/ediz-remote/security-audit
+      SIGNALING_AUDIT_RETENTION_DAYS: ${SIGNALING_AUDIT_RETENTION_DAYS:-7}
+      SIGNALING_AUDIT_HMAC_KEY_FILE: /run/secrets/signaling_audit_hmac
+      EDIZ_REMOTE_BUILD_ID: ${EDIZ_REMOTE_BUILD_ID:-ediz-remote@0.1.0}
+    secrets:
+      - source: signaling_audit_hmac
+        target: signaling_audit_hmac
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    volumes:
+      - signaling-audit:/var/lib/ediz-remote/security-audit
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+secrets:
+  signaling_audit_hmac:
+    file: ${SIGNALING_AUDIT_HMAC_KEY_FILE_HOST:-./secrets/signaling-audit-hmac.key}
+
+volumes:
+  signaling-audit:

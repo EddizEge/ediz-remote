@@ -1,0 +1,45 @@
+{
+  "name": "ediz-remote",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && npm run build --workspace @ediz-remote/web",
+    "dev": "concurrently -n signaling,web -c blue,green \"npm run dev --workspace @ediz-remote/signaling\" \"npm run dev --workspace @ediz-remote/web\"",
+    "predev": "npm run build --workspace @ediz-remote/protocol",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run turn:public-preflight:test && npm run security-output:test && npm run security:container:test && npm run test --workspaces --if-present",
+    "start": "npm run start --workspace @ediz-remote/signaling",
+    "native:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 build",
+    "native:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 test",
+    "native:turn-simulation": "npm run build --workspace @ediz-remote/signaling && node scripts/native-turn-simulation.mjs",
+    "browser:turn-simulation": "node scripts/browser-turn-simulation.mjs",
+    "native:probe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 probe",
+    "native:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 publish",
+    "desktop:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-desktop.ps1 build",
+    "desktop:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-desktop.ps1 test",
+    "desktop:run": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-desktop.ps1 run",
+    "desktop:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-desktop.ps1 publish",
+    "release:windows:manifest": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 manifest",
+    "release:windows:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 verify",
+    "release:windows:sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 sign",
+    "release:windows:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.test.ps1",
+    "turn:probe": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && node scripts/turn-relay-probe.mjs",
+    "turn:network-probe": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && node scripts/turn-network-quality-probe.mjs",
+    "turn:public-preflight": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && node scripts/turn-public-preflight.mjs",
+    "turn:public-preflight:test": "node --test scripts/turn-preflight-lib.test.mjs",
+    "security-output:test": "node --test scripts/safe-output.test.mjs scripts/browser-turn-simulation-redaction.test.mjs",
+    "security:container:test": "node --test scripts/container-security-audit.test.mjs",
+    "security:container:deploy": "node scripts/container-deploy.mjs",
+    "security:containers": "node scripts/container-security-audit.mjs",
+    "test:ws-proxy": "node scripts/websocket-interruption-proxy.mjs",
+    "security:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-audit.ps1"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

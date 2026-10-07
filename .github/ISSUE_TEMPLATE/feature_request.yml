@@ -1,0 +1,16 @@
+name: Özellik önerisi
+description: Günlük destek akışını iyileştirecek bir öneri paylaş.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Hangi sorunu çözmek istiyorsun?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Önerilen davranış
+    validations:
+      required: true

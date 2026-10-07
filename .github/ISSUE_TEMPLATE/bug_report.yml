@@ -1,0 +1,26 @@
+name: Hata bildirimi
+description: Güvenlik dışındaki bir hatayı yeniden üretme adımlarıyla bildir.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Güvenlik açıklarını Security → Report a vulnerability üzerinden özel bildir. Token, kod, SDP/ICE, credential ve müşteri ekranı ekleme."
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Beklenen ve gerçekleşen davranış
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Yeniden üretme adımları
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Ortam
+      description: "Commit/sürüm, Windows, tarayıcı; gerekiyorsa GPU ve sürücü."
+    validations:
+      required: true

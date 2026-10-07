@@ -1,0 +1,8 @@
+# Raspberry Pi üzerinde mevcut tunnel kimliğinizle doldurun.
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: /home/pi/.cloudflared/YOUR_TUNNEL_UUID.json
+
+ingress:
+  - hostname: remote.edizegemercan.com.tr
+    service: http://localhost:8080
+  - service: http_status:404

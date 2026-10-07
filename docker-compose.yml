@@ -1,0 +1,71 @@
+services:
+  ediz-remote:
+    image: ${EDIZ_REMOTE_APP_IMAGE:?Run npm run security:containers and use the generated deployment.env}
+    pull_policy: never
+    labels:
+      org.ediz-remote.security-audit: ${EDIZ_REMOTE_DEPLOYMENT_VALIDATED:?Run npm run security:container:deploy}
+      org.ediz-remote.security-audit-image: ${EDIZ_REMOTE_APP_IMAGE:?Run npm run security:containers and use the generated deployment.env}
+    container_name: ediz-remote
+    restart: unless-stopped
+    read_only: true
+    pids_limit: 256
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PORT: 8080
+      NODE_ENV: production
+      ICE_STUN_URLS: ${ICE_STUN_URLS:-stun:stun.cloudflare.com:3478}
+      TURN_URLS: ${TURN_URLS:-}
+      TURN_SHARED_SECRET_FILE: /run/secrets/turn_shared_secret
+      TURN_CREDENTIAL_TTL_SECONDS: ${TURN_CREDENTIAL_TTL_SECONDS:-3600}
+      SIGNALING_ALLOWED_ORIGINS: ${SIGNALING_ALLOWED_ORIGINS:-https://remote.edizegemercan.com.tr,https://app.ediz-remote.local}
+      TRUST_CLOUDFLARE_CONNECTING_IP: ${TRUST_CLOUDFLARE_CONNECTING_IP:-true}
+      SIGNALING_MAX_CONNECTIONS: ${SIGNALING_MAX_CONNECTIONS:-256}
+      SIGNALING_MAX_CONNECTIONS_PER_IP: ${SIGNALING_MAX_CONNECTIONS_PER_IP:-16}
+      SIGNALING_MAX_SESSIONS: ${SIGNALING_MAX_SESSIONS:-96}
+      SIGNALING_MAX_SESSIONS_PER_IP: ${SIGNALING_MAX_SESSIONS_PER_IP:-4}
+      SIGNALING_AUDIT_ENABLED: ${SIGNALING_AUDIT_ENABLED:-true}
+      SIGNALING_AUDIT_DIRECTORY: /var/lib/ediz-remote/security-audit
+      SIGNALING_AUDIT_RETENTION_DAYS: ${SIGNALING_AUDIT_RETENTION_DAYS:-7}
+      SIGNALING_AUDIT_HMAC_KEY_FILE: /run/secrets/signaling_audit_hmac
+      EDIZ_REMOTE_BUILD_ID: ${EDIZ_REMOTE_BUILD_ID:-ediz-remote@0.1.0}
+    secrets:
+      - source: turn_shared_secret
+        target: turn_shared_secret
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+      - source: signaling_audit_hmac
+        target: signaling_audit_hmac
+        uid: "1000"
+        gid: "1000"
+        mode: 0400
+    volumes:
+      - signaling-audit:/var/lib/ediz-remote/security-audit
+    tmpfs:
+      - /tmp:size=64m,mode=0700,uid=1000,gid=1000,noexec,nosuid,nodev
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+secrets:
+  turn_shared_secret:
+    file: ${TURN_SHARED_SECRET_FILE_HOST:-./secrets/turn-shared-secret.key}
+  signaling_audit_hmac:
+    file: ${SIGNALING_AUDIT_HMAC_KEY_FILE_HOST:-./secrets/signaling-audit-hmac.key}
+
+volumes:
+  signaling-audit:
