@@ -716,7 +716,9 @@ export function createSignalingServer(
     const session = sessions.get(code)
     const hostSocket = session?.host.socket
     if (!session || !hostSocket || session.expiresAt <= now()) {
-      if (session) expireSession(session)
+      // Onaylı oturumu (askıdaki host dahil) kod bilgisi sonlandıramaz; kod TTL'i
+      // yalnız kullanılmamış kodu, grace ise reconnect zamanlayıcısı bitirir.
+      if (session && !session.guest) expireSession(session)
       if (!recordSecurityAudit(
         {
           eventType: 'join_rejected',

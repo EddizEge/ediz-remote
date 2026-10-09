@@ -786,6 +786,15 @@ const I_HOST = fixture('I-host-askıda', 'host koptu, grace içinde', async (env
   await approvedWithOffers(env, 'view')
   await suspend(env, 'h', 'g')
 })
+const I_HOST_EXPIRED_CODE = fixture(
+  'I-host-askıda-TTL',
+  "kod TTL'i geçtikten sonra host koptu, grace içinde",
+  async (env) => {
+    await approvedWithOffers(env, 'view')
+    env.clock.now = BASE_TIME + SESSION_TTL_MS + 60_000
+    await suspend(env, 'h', 'g')
+  },
+)
 const I_TIMEOUT = fixture(
   'I-zaman-aşımı',
   'misafir koptu, gerçek grace zamanlayıcısı (1 sn) oturumu bitirdi',
@@ -1345,8 +1354,17 @@ rows(H_E_AFTER, 'g', [
 ])
 rows(H_E_AFTER, 'x', [
   ['join_session (doğru kod)', ['error:invalid_code'], {
-    peers: { h: ['session_ended:expired'], g: ['session_ended:expired'] },
-    note: 'ŞÜPHELİ (mevcut davranış): kodu bilen üçüncü kişi TTL sonrası onaylı oturumu bitirebilir',
+    note: 'kod bilgisi TTL sonrası onaylı oturumu sonlandıramaz; relay sürer',
+    followUp: async (env) => {
+      await follow('h', 'signal peer offer N2', SILENT, {
+        grants: true,
+        peers: { g: ['signal'] },
+      })(env)
+      await follow('g', 'signal peer answer N2', SILENT, {
+        grants: true,
+        peers: { h: ['signal'] },
+      })(env)
+    },
   }],
   ['resume_session (misafir token)', ['session_resumed'], {
     grants: true,
@@ -1427,9 +1445,26 @@ rows(I_HOST, 'x', [
     peers: { g: ['peer_resumed'] },
   }],
   ['join_session (doğru kod)', ['error:invalid_code'], {
-    peers: { g: ['session_ended:expired'] },
-    note: 'ŞÜPHELİ (mevcut davranış): host askıdayken kodu bilen üçüncü kişi oturumu bitirir',
-    followUp: follow('r', 'resume_session (host token)', INVALID_RESUME),
+    note: 'host askıdayken kod bilgisi oturumu sonlandıramaz; host grace içinde döner',
+    followUp: async (env) => {
+      await follow('r', 'resume_session (host token)', ['session_resumed'], {
+        grants: true,
+        peers: { g: ['peer_resumed'] },
+      })(env)
+      await follow('r', 'signal peer offer N2', SILENT, {
+        grants: true,
+        peers: { g: ['signal'] },
+      })(env)
+    },
+  }],
+])
+rows(I_HOST_EXPIRED_CODE, 'x', [
+  ['join_session (doğru kod)', ['error:invalid_code'], {
+    note: "kod TTL'i geçmiş ve host askıda: oturum bitmez, host grace içinde döner",
+    followUp: follow('r', 'resume_session (host token)', ['session_resumed'], {
+      grants: true,
+      peers: { g: ['peer_resumed'] },
+    }),
   }],
 ])
 rows(I_TIMEOUT, 'x', [
@@ -1625,6 +1660,60 @@ describe('signaling durum makinesi matrisi', () => {
       await row.followUp?.(env)
     })
   }
+})
+
+// Regresyon: kod bilen üçüncü soketin join_session'ı onaylı oturumu `expired`
+// ile sonlandırıyordu (kod TTL'i geçmiş oturum ve host'u grace içinde askıda
+// oturum). Yanıt `invalid_code` olarak kalır; oturum ve üyeler etkilenmez.
+describe('regresyon: kod bilgisi onaylı oturumu sonlandıramaz', () => {
+  it('kod TTL\'i geçmiş onaylı oturum üçüncü soketin join\'inden sonra relay etmeye devam eder', async () => {
+    const env = await startEnv()
+    await approvedWithOffers(env, 'control')
+    env.clock.now = BASE_TIME + SESSION_TTL_MS + 5 * 60_000
+    const label = 'TTL sonrası üçüncü soket join'
+    await runCell(env, 'x', label, MESSAGES['join_session (doğru kod)'](env), {
+      reply: ['error:invalid_code'],
+    })
+    await runCell(env, 'x', `${label} (tekrar)`, MESSAGES['join_session (doğru kod)'](env), {
+      reply: ['error:invalid_code'],
+    })
+    await runCell(env, 'g', `${label} → misafir answer`, MESSAGES['signal peer answer N1'](env), {
+      reply: SILENT,
+      grants: true,
+      peers: { h: ['signal'] },
+    })
+    await runCell(env, 'h', `${label} → host ICE`, MESSAGES['signal peer ICE N1'](env), {
+      reply: SILENT,
+      grants: true,
+      peers: { g: ['signal'] },
+    })
+    await runCell(env, 'h', `${label} → refresh_ice`, MESSAGES.refresh_ice(env), {
+      reply: ['ice_configuration'],
+    })
+  })
+
+  it('host askıdayken üçüncü soketin join\'i grace içindeki resume\'u engellemez', async () => {
+    const env = await startEnv()
+    await approvedWithOffers(env, 'control')
+    await suspend(env, 'h', 'g')
+    const label = 'host askıda, üçüncü soket join'
+    await runCell(env, 'x', label, MESSAGES['join_session (doğru kod)'](env), {
+      reply: ['error:invalid_code'],
+    })
+    env.clock.now = BASE_TIME + DEFAULT_GRACE_MS - 1
+    const output = await runCell(env, 'r', `${label} → host resume`, MESSAGES['resume_session (host token)'](env), {
+      reply: ['session_resumed'],
+      grants: true,
+      peers: { g: ['peer_resumed'] },
+    })
+    expect(accessModeOf(output, 'r')).toBe('control')
+    expect(resumedPeerConnected(output, 'r')).toBe(true)
+    await runCell(env, 'r', `${label} → host offer`, MESSAGES['signal peer offer N2'](env), {
+      reply: SILENT,
+      grants: true,
+      peers: { g: ['signal'] },
+    })
+  })
 })
 
 function webSocketOrigin(url: string): string {
