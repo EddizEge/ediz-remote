@@ -282,16 +282,29 @@ politika/katalog 111/111 sonucu verdi; lint, build ve npm + dört NuGet projesi
 dependency audit'i temizdir. Yerel `linux/amd64` container kapısı yeni lockfile ile
 üç hedefte HIGH/CRITICAL `0` verdi (`docs/CONTAINER_RELEASE.md`).
 
-Release kimliği gömülü ilk geliştirme adayı `184835328` bayttır; son yazım zamanı
-`2026-10-09 17:10:09 +03:00`, SHA-256 değeri
-`DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`. Sürüm
-kaynağı `ProductVersion 0.1.0+971506fb38a0ef162dee09868493e4f481767be0.dirty`,
+Release kimliği gömülü ilk geliştirme adayı `971506f`'den üretildi (SHA-256
+`DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`). Aynı gün
+fuzz dilimi web bundle'ını ve WPF köprü ayrıştırıcılarını değiştirdiği için yerini
+`6bdf2a5` adayı aldı.
+
+Aynı gün eklenen seed'li fuzz matrisi (protokol, canlı signaling, web DataChannel
+ve WPF köprüsü) iki gerçek bulguyu kapattı: iç içe `__proto__` anahtarının Zod
+strict nesnesince sessizce atılması ve WPF `Try*` ayrıştırıcılarının eşlenmemiş
+surrogate'ta istisna fırlatması. Sonrasında toplu test 250 başarılı + 1 atlanan,
+native 42 başarılı + 1 atlanan, desktop 113/113 ve Windows release 111/111 geçti;
+lint, build ve dependency audit temizdir.
+
+Güncel geliştirme adayı `184835328` bayttır; son yazım zamanı
+`2026-10-09 17:55:07 +03:00`, SHA-256 değeri
+`330D033CE3AC08C0E011E2DEEF0B477D15F71754570DB76CD091DC6E838D20E0`. Sürüm
+kaynağı `ProductVersion 0.1.0+6bdf2a5f7a070a56a7c70593e4ff464db56be155.dirty`,
 `FileVersion 0.1.0.0` taşır; ağaç izlenmeyen teslim dosyası nedeniyle kirlidir ve
 sequence `0`dır. Şema v2 manifest SHA-256
-`69ED2259A7F067156DB0C6306461FE4EFBEF0507B7A27403E97759B6170A8ABC` olarak
-üretildi. Source/published dörder web dosyasında fark `0`, bundle'da wire v3 var
-ve wire v2 yok. Authenticode `NotSigned`, katalog yok; `release:windows:verify`
-`catalog_missing` ile kapanır. Fiziksel EXE smoke çalıştırılmadı.
+`A70C696D7A9ABA76C531ECAB50F514A681B8BA9CBADA6DCD766E5043C27000E2` olarak
+üretildi. Source/published dörder web dosyasında fark `0`, bundle'da wire v3 var.
+Authenticode `NotSigned`, katalog yok; `release:windows:verify` `catalog_missing`,
+tabansız `sign` `release_floor_missing`, tabanlı `sign` imza denemeden
+`provenance_dirty_source` ile kapanır. Fiziksel EXE smoke çalıştırılmadı.
 
 ## Raspberry Pi 5 kurulumu
 

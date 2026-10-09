@@ -311,11 +311,14 @@ doğrulaması gerekir.
   `0C82A7B08C7BC21A88B1A85E727EBC2AF87129C35A537C6605A80DAEF003CB55`; audited
   application image'ı UID 1000, ağsız/read-only Node smoke'unu npm araçları olmadan
   geçti. Coturn health ve HMAC relay probe'u bu koşuda yeniden çalıştırılmadı.
+- Fuzz dilimi sonrası toplu test 250 başarılı + 1 atlanan (web 106, protocol 18,
+  signaling 81 + 1), desktop 113/113, release 111/111; lint/build/audit temiz.
 - Geliştirme adayı `184835328` bayt, SHA-256
-  `DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`,
-  `ProductVersion 0.1.0+971506fb38a0ef162dee09868493e4f481767be0.dirty`,
+  `330D033CE3AC08C0E011E2DEEF0B477D15F71754570DB76CD091DC6E838D20E0`,
+  `ProductVersion 0.1.0+6bdf2a5f7a070a56a7c70593e4ff464db56be155.dirty`,
   `FileVersion 0.1.0.0`; Authenticode `NotSigned`. `verify` `catalog_missing`;
   tabansız `sign` `release_floor_missing`, tabanlı `sign` imza denemeden
-  `provenance_dirty_source` ile kapandı.
+  `provenance_dirty_source` ile kapandı. Bu aday, aynı günün `971506f` adayının
+  (`DED61FD7…D71D`) yerini aldı.
 - Pi `linux/arm64` scan/deploy, gerçek sertifikalı imza ve temiz Windows 10/11
   doğrulaması bu turda yapılmadı; Pi erişimi ve signing sertifikası yoktu.
