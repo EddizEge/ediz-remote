@@ -215,8 +215,17 @@ Dilim 4 kararı:
 - [x] Oracle doğrulaması: eski protokol koruması ve eski WPF ayrıştırıcıları fuzz
   testlerinde düştü; sunucuya bilerek eklenen handler istisnası canlı kampanyada
   işlenmemiş hata olarak yakalandı.
-- [ ] Tablo tabanlı süresi geçmiş/replay state-machine matrisi ve kanıtların
-  `docs/PHASE4_ACCEPTANCE.md` altında toplanması.
+- [x] Tablo tabanlı signaling durum makinesi matrisi
+  (`services/signaling/test/stateMachine.test.ts`, 326 test): oturumsuz, bekleyen,
+  reddedilmiş, onaylı (`view`/`control`), revoke sonrası, bitmiş, kod TTL'i geçmiş,
+  askıda, grace aşımı ve döndürülmüş resume token durumları × rol × mesaj; ayrıca
+  negotiation replay satırları. Her hücre gönderene dönen yanıtı ve diğer bütün
+  soketlerin aldığı mesajları doğrular; 10 kasıtlı sunucu bozulmasının 10'u düştü.
+- [x] Matris bulgusu: kodu bilen üçüncü kişi `join_session` ile kod TTL'i geçmiş
+  onaylı oturumu ya da host'u grace içinde askıdaki oturumu `expired` ile
+  bitirebiliyordu. `joinSession` artık yalnız misafiri olmayan oturumun süre sonunu
+  uygular; yanıt (`invalid_code`) ve audit kaydı değişmedi.
+- [x] Kanıtlar [`docs/PHASE4_ACCEPTANCE.md`](PHASE4_ACCEPTANCE.md) altında toplandı.
 
 ## Faz 4 kabul durumu
 
@@ -224,9 +233,11 @@ Faz 4 henüz tamamlanmadı. İlk dört dilim downgrade/origin/proxy/payload, kay
 kotaları, brute-force/flood, negotiation replay/pending ICE, DataChannel yetkisi,
 hassas çıktı sınırları ve minimal audit'i kapatır. Beşinci dilimin dependency,
 container, Windows release ve anti-rollback/build provenance kapıları kod/politika
-olarak tamamlandı. Faz 4 kabulü için gerçek Pi hedef-platform taramasının sıfır
-bulguyla geçmesi, gerçek EXE + katalog Authenticode/RFC3161 imzası ve temiz makine
-doğrulaması gerekir.
+olarak tamamlandı. Altıncı dilimin fuzz ve durum makinesi matrisleri test kapsamında
+tamamdır. Faz 4 kabulü için gerçek Pi hedef-platform taramasının sıfır bulguyla
+geçmesi, gerçek EXE + katalog Authenticode/RFC3161 imzası ve temiz makine doğrulaması
+gerekir. Kriter bazında kanıt ve eksik girdiler
+[`docs/PHASE4_ACCEPTANCE.md`](PHASE4_ACCEPTANCE.md) altındadır.
 
 ## İkinci dilim tarihsel doğrulama özeti
 
@@ -313,6 +324,8 @@ doğrulaması gerekir.
   geçti. Coturn health ve HMAC relay probe'u bu koşuda yeniden çalıştırılmadı.
 - Fuzz dilimi sonrası toplu test 250 başarılı + 1 atlanan (web 106, protocol 18,
   signaling 81 + 1), desktop 113/113, release 111/111; lint/build/audit temiz.
+- Durum makinesi matrisi ve `joinSession` düzeltmesi sonrası (`20b972b`) toplu test
+  576 başarılı + 1 atlanan (signaling 407 + 1); lint ve build temiz.
 - Geliştirme adayı `184835328` bayt, SHA-256
   `330D033CE3AC08C0E011E2DEEF0B477D15F71754570DB76CD091DC6E838D20E0`,
   `ProductVersion 0.1.0+6bdf2a5f7a070a56a7c70593e4ff464db56be155.dirty`,

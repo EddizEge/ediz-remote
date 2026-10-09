@@ -153,9 +153,9 @@ npm run security:audit
 
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
 ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-09 yerel tabanında
-seed'li fuzz matrisi dahil 250 npm testi, 42 native testi, 113 desktop testi ve
-111 Windows release testi başarılıdır; npm/native paketlerinde birer ortam testi
-atlanmıştır.
+seed'li fuzz ve signaling durum makinesi matrisleri dahil 576 npm testi, 42 native
+testi, 113 desktop testi ve 111 Windows release testi başarılıdır; npm/native
+paketlerinde birer ortam testi atlanmıştır.
 Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOPMENT.md).
 
 ## Yol haritası
@@ -187,6 +187,7 @@ Döndürülmüş ekran ve exact DXGI pointer shape desteği henüz tamamlanmadı
 | [Windows host](docs/WINDOWS_HOST.md) | Capture, encoder, RTP ve native WebRTC |
 | [Windows desktop](docs/WINDOWS_DESKTOP.md) | WPF, WebView2 ve paketleme |
 | [Tehdit modeli](docs/THREAT_MODEL.md) | Varlıklar, güven sınırları ve açık riskler |
+| [Faz 4 kabul kanıtı](docs/PHASE4_ACCEPTANCE.md) | Kriter bazında kanıt, kanıt türü ve kalan engeller |
 | [Audit modeli](docs/SECURITY_AUDIT.md) | Minimal olay şeması ve retention |
 | [Katkı rehberi](CONTRIBUTING.md) | Hata bildirimi ve geliştirme yaklaşımı |
 | [Güvenlik politikası](SECURITY.md) | Hassas bulguları özel bildirme |

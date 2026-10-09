@@ -50,8 +50,11 @@ değişiklik yeni alt protokol sürümü ve açık minimum sürüm kararı gerek
   taşırmaz. Zod strict nesnesi iç içe `__proto__` anahtarını kendiliğinden hata
   vermeden attığı için bu ön tarama zorunludur.
 - Bağlantı kodları kriptografik rastgelelik kaynağından üretilen 6 hanedir.
-- Kullanılmamış kod 10 dakika sonra geçersiz olur.
-- Bir kod, onaylanmış ilk bağlantıdan sonra tekrar kullanılamaz.
+- Kullanılmamış kod 10 dakika sonra geçersiz olur. Kod süresi mesaj anında
+  (`join_session`, `request_decision`) denetlenir ve yalnız onaysız oturuma uygulanır.
+- Bir kod, onaylanmış ilk bağlantıdan sonra tekrar kullanılamaz. Kod bilgisi onaylı
+  oturumu ya da host'u grace içinde askıdaki oturumu sonlandıramaz; böyle bir
+  `join_session` oturumu etkilemeden `invalid_code` alır.
 - Host açıkça izin vermeden iki cihaz arasında sinyal iletilmez.
 - Varsayılan hard tavan global 256/IP başına 16 açık WebSocket ve global 96/
   creator IP başına 4 session'dır. Session tavanı 192 aktif eş üzerinde reconnect

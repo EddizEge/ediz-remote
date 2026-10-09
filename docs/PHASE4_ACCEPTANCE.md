@@ -22,7 +22,9 @@ Kaynaklar: [`AGENTS.md`](../AGENTS.md) §5 ve §7 Faz 4,
 | Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog Authenticode imzası ve RFC3161 timestamp'i; temiz ağaçtan sequence ≥ 1 ilk imzalı yayın | Kriter 5, imzalı artifact çıkış kapısı | OV/EV code signing sertifikası (store/HSM) ve güvenilir RFC3161 sağlayıcısı |
 | İmzalı adayın temiz Windows 10/11 makinesinde doğrulanması | Kriter 5 | Temiz Windows 10/11 test makinesi |
 | Yeni web, signaling ve Windows paketinin production'a birlikte alınması ve gerçek HTTPS/WSS deployment testi | Kriter 1, 2 ve 4'ün production kanıtı; Cloudflare çıkış kapısı | Yukarıdaki Pi onayı ve imzalı Windows paketi |
-| Tablo tabanlı süresi geçmiş/replay state-machine matrisi | Kriter 1 ve 2, ilk çıkış kapısı | Bekliyor — ayrı şeritte yazılıyor |
+
+Tablo tabanlı süresi geçmiş/replay durum makinesi matrisi 2026-10-09'da
+tamamlandı (`20b972b`); artık bloklayıcı değildir.
 
 ## Kanıt türleri
 
@@ -45,18 +47,19 @@ aktarma `425abc9` içinde gelir. 2026-10-09 işleri ayrı commit'lerdedir.
 
 | # | Kriter | Kanıt (test dosyası / komut) | Sonuç, tarih | Commit | Kanıt türü | Durum | Eksik girdi |
 |---|---|---|---|---|---|---|---|
-| 1 | Onaysız veya süresi geçmiş oturum ekran/control sinyali aktaramaz | `services/signaling/test/server.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/session/useSignaling.test.ts`; `npm test`. Sunucu yalnız aktif onaylı üyeliğin `signal` mesajını relay eder; süre dolunca `reconnect_timeout` ve eski token reddi; istemci terminal latch'i | 2026-10-09: toplu `npm test` 250 başarılı + 1 atlanan. Canlı signaling fuzz'ında 2.500 kimliksiz frame sonrası hiçbir sokete signal/onay ulaşmadı (`THREAT_MODEL.md` ER-T03) | `425abc9`, `6bdf2a5` | Birim/entegrasyon, fuzz | Kısmen | Tablo tabanlı süresi geçmiş/replay matrisi (Bekliyor — ayrı şeritte); v3 sunucunun production'a alınması |
-| 2 | Eski/replay control mesajları etkisizdir | `apps/web/src/features/webrtc/peerProtocol.test.ts`, `apps/web/src/features/webrtc/negotiation.test.ts`, `apps/windows-desktop.Tests/ControlInputTests.cs`, `services/signaling/test/server.test.ts`. Ortak session `sequence`, rate reddinde ilerlemeyen watermark, yalnız başarılı uygulamada ilerleyen native watermark, `negotiationId` replay reddi | 2026-10-09: web 106, signaling 81 + 1 atlanan, desktop 113/113 | `425abc9`, `6bdf2a5` | Birim/entegrasyon, fuzz | Kısmen | Tablo tabanlı replay matrisi (Bekliyor — ayrı şeritte); production control soak ölçümü (ER-T07) |
+| 1 | Onaysız veya süresi geçmiş oturum ekran/control sinyali aktaramaz | `services/signaling/test/stateMachine.test.ts` (durum × rol × mesaj matrisi: oturumsuz, bekleyen, reddedilmiş, onaylı, revoke sonrası, bitmiş, kod TTL'i geçmiş, askıda, grace aşımı, döndürülmüş resume token), `services/signaling/test/server.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/session/useSignaling.test.ts`; `npm test`. Her hücrede gönderene dönen yanıt ve diğer bütün soketlerin aldığı mesajların tam listesi; yetkisiz hücrede `signal`/onay/ICE sızıntısı yok | 2026-10-09: durum makinesi 326/326, signaling 407 + 1 atlanan, toplu `npm test` 576 + 1 atlanan; 10 kasıtlı sunucu bozulmasının 10'u da matriste düştü. Canlı fuzz'da 2.500 kimliksiz frame sonrası hiçbir sokete signal/onay ulaşmadı. Bulgu: kodu bilen üçüncü kişi `join_session` ile kod TTL'i geçmiş onaylı ya da host'u askıdaki oturumu bitirebiliyordu; düzeltildi | `50ae6f6`, `5b8b314`, `20b972b`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | v3 web/signaling/desktop paketinin production'a alınması ve canlı doğrulama (Pi onayı) |
+| 2 | Eski/replay control mesajları etkisizdir | `services/signaling/test/stateMachine.test.ts` (negotiation replay: aynı offer tekrarı, ikinci answer, yeni offer sonrası eski candidate, yanlış lane, ters yön, 257. offer, resume boyunca korunan durum; eski resume token replay'i), `apps/web/src/features/webrtc/peerProtocol.test.ts`, `apps/web/src/features/webrtc/negotiation.test.ts`, `apps/windows-desktop.Tests/ControlInputTests.cs`, `services/signaling/test/server.test.ts`. Ortak session `sequence`, rate reddinde ilerlemeyen watermark, yalnız başarılı uygulamada ilerleyen native watermark | 2026-10-09: durum makinesi 326/326, web 106, signaling 407 + 1 atlanan, desktop 113/113 | `50ae6f6`, `20b972b`, `425abc9`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | Production control soak ölçümü (ER-T07) |
 | 3 | Fuzz/bozuk mesaj testleri servisi veya host'u düşürmez | `packages/protocol/test/fuzz.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/webrtc/peerProtocol.fuzz.test.ts`, `apps/windows-desktop.Tests/BridgeFuzzTests.cs`; yardımcı `packages/protocol/test/fuzzSupport.ts` | 2026-10-09: 24 fuzz/regresyon testi; protocol 18, web 106, signaling 81 + 1 atlanan, desktop 113/113. Canlı kampanya sonrası health ve temiz çiftin relay'i sağlam. İki gerçek bulgu kapatıldı (iç içe `__proto__`, WPF eşlenmemiş surrogate istisnası); oracle olarak eski korumalar testte düştü | `6bdf2a5` | Fuzz, birim/entegrasyon | Karşılandı (test kapsamı) | Production negotiation-churn/soak ölçümü (ER-T06); fiziksel host üzerinde fuzz çalıştırılmadı |
 | 4 | Secret/token/SDP içeren üretim logu bulunmaz | `services/signaling/test/securityAudit.test.ts`, `services/signaling/test/securityAuditConfig.test.ts`, `services/signaling/test/server.test.ts`, `scripts/safe-output.test.mjs`, `scripts/browser-turn-simulation-redaction.test.mjs`, `apps/windows-host.Tests/SafeHostDiagnosticsTests.cs`; `npm run security-output:test`. Strict sekiz alanlı JSONL audit, coturn `no-stdout-log` | 2026-10-09: güvenli çıktı 10/10, signaling 81 + 1 atlanan; sentinel testleri stdout/stderr, audit ve TURN/browser probe tanılarını kapsar | `425abc9` | Birim/entegrasyon | Kısmen | Canlı production stdout/stderr capture ve Pi audit volume/secret smoke'u (Pi onayı); gelecekteki destek paketi testi (Faz 6) |
 | 5 | Yayınlanan binary bütünlüğü doğrulanabilir | `scripts/windows-release.test.ps1` (`npm run release:windows:test`), `npm run release:windows:manifest`, `npm run release:windows:verify`, `npm run release:windows:sign` | 2026-10-09: release politika/katalog 111/111. Gerçek aday `NotSigned`; `verify` → `catalog_missing`, tabansız `sign` → `release_floor_missing`, tabanlı `sign` → imza denemeden `provenance_dirty_source` | `971506f`, `8c209df`, `893de84` | Birim/entegrasyon, yerel gerçek ortam | Bekliyor | OV/EV store/HSM sertifikası, RFC3161 sağlayıcısı, temiz ağaçtan sequence ≥ 1 aday, temiz Windows 10/11 makinesi |
 
 Gerekçeler:
 
-- Kriter 1 ve 2'nin kod/test kanıtı güçlüdür, fakat Faz 4 planı ve tehdit modeli
-  tablo tabanlı süresi geçmiş/replay matrisini ayrıca istediği için `Kısmen`
-  kalır. Faz 4 web/signaling/desktop paketi henüz production'a alınmadığından
-  production kanıtı yoktur.
+- Kriter 1 ve 2 için Faz 4 planı ve tehdit modelinin istediği tablo tabanlı
+  süresi geçmiş/replay matrisi 2026-10-09'da tamamlandı ve gerçek bir
+  erişilebilirlik bulgusunu kapattı; bu yüzden test kapsamında `Karşılandı`dır.
+  Faz 4 web/signaling/desktop paketi henüz production'a alınmadığından production
+  kanıtı yoktur.
 - Kriter 3 bir test kriteridir ve 2026-10-09 fuzz matrisi dört katmanda geçmiştir;
   production soak bu kriterin değil ER-T06'nın kalan işidir.
 - Kriter 4 "üretim logu" ister; yalnız yerel sentinel testi vardır, canlı production
@@ -69,14 +72,14 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 
 | Çıkış kapısı | Kanıt (test dosyası / komut) | Sonuç, tarih | Commit | Kanıt türü | Durum | Eksik girdi |
 |---|---|---|---|---|---|---|
-| Onaysız/süresi geçmiş/replay durumları için state-machine ve fuzz matrisi | Kriter 3'teki dört fuzz dosyası | 2026-10-09: fuzz katmanı protokol, canlı signaling, web DataChannel ve WPF köprüsünde tamam; iki bulgu kapatıldı | `6bdf2a5` | Fuzz | Kısmen | Tablo tabanlı süresi geçmiş/replay matrisi: Bekliyor — ayrı şeritte |
+| Onaysız/süresi geçmiş/replay durumları için state-machine ve fuzz matrisi | Kriter 3'teki dört fuzz dosyası ve `services/signaling/test/stateMachine.test.ts` | 2026-10-09: fuzz katmanı protokol, canlı signaling, web DataChannel ve WPF köprüsünde tamam; durum makinesi matrisi 326/326; üç gerçek bulgu kapatıldı (iç içe `__proto__`, WPF eşlenmemiş surrogate, kodla onaylı oturum sonlandırma) | `6bdf2a5`, `20b972b` | Fuzz, birim/entegrasyon | Karşılandı (test kapsamı) | — |
 | Negotiation ID/lane, bounded pending ICE ve DataChannel rol/yetki matrisi | `apps/web/src/features/webrtc/negotiation.test.ts`, `apps/web/src/features/webrtc/peerProtocol.test.ts`, `services/signaling/test/server.test.ts`, `apps/windows-desktop.Tests/NativeVideoBridgeProtocolTests.cs` | Tarihsel 2026-09-02 Dilim 3: web 100/100, signaling 42/42, desktop 87/87. Güncel 2026-10-09 tabanında da geçer | `425abc9` | Birim/entegrasyon | Kısmen | Production churn/soak kanıtı |
 | Global/IP kaynak kotaları ve signal/ICE/message rate limitleri | `services/signaling/test/rateLimit.test.ts`, `services/signaling/test/server.test.ts` | Tarihsel 2026-08-24 Dilim 2: signaling 38/38 (64 KiB, flood, bozuk UTF-8, derin JSON, takeover). Güncel 2026-10-09: signaling 81 + 1 atlanan | `425abc9` | Birim/entegrasyon | Kısmen | Production kapasite ölçümü |
 | Signaling stdout/stderr, JSONL audit ve TURN/browser probe tanılarında secret sentinel sızıntı testi | Kriter 4'teki dosyalar; `npm run security-output:test` | 2026-10-09: güvenli çıktı 10/10, TURN 13/13 | `425abc9` | Birim/entegrasyon | Kısmen | Canlı production capture; gelecekteki destek paketi doğrulaması |
 | Production npm/NuGet/container taraması, SBOM ve gerekçeli baseline | `npm run security:audit`, `npm run security:containers`, `scripts/container-security-audit.test.mjs` | 2026-10-09: npm + dört NuGet projesi 0 açık; container politika 22/22; yerel `linux/amd64` 3/3 hedef HIGH/CRITICAL `0` | `d71b739` | Birim/entegrasyon, yerel gerçek ortam | Kısmen | Pi `linux/arm64` gerçek scan ve deployment smoke (Pi erişim onayı) |
 | Authenticode imzalı Windows artifact ve bağımsız imza/hash doğrulaması | Kriter 5'teki dosya ve komutlar | 2026-10-09: 111/111 politika testi; aday `NotSigned`, katalog yok | `971506f`, `8c209df`, `893de84` | Birim/entegrasyon, yerel gerçek ortam | Bekliyor | OV/EV sertifika + RFC3161 sağlayıcısı; temiz Windows 10/11 makinesi |
 | Cloudflare origin/proxy policy ile gerçek HTTPS/WSS deployment testi | `services/signaling/test/server.test.ts` (origin, subprotocol, proxy spoof) | Kod/test geçer; Faz 4 v3 paketiyle gerçek deployment testi yapılmadı | `425abc9` | Birim/entegrasyon | Bekliyor | v3 web/signaling/desktop paketinin production'a alınması (Pi onayı) |
-| Faz 4 kabul kanıtlarının `docs/PHASE4_ACCEPTANCE.md` altında toplanması | Bu belge | 2026-10-09: ilk sürüm | Bu belgenin commit'i | — | Kısmen | State-machine matrisi birleştirilince güncellenmeli |
+| Faz 4 kabul kanıtlarının `docs/PHASE4_ACCEPTANCE.md` altında toplanması | Bu belge | 2026-10-09: ilk sürüm ve durum makinesi matrisi sonrası güncelleme | `51890cf` | — | Karşılandı | Pi, imza ve production kanıtı geldikçe güncellenir |
 
 ## Dilim özeti
 
@@ -104,8 +107,8 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
   ve gerçek sertifikalı imza.
 - **[Dilim 6 — Fuzz ve bozuk mesaj matrisi](PHASE4_PLAN.md#dilim-6--fuzz-ve-bozuk-mesaj-matrisi):**
   Bağımlılıksız seed'li fuzz yardımcısı; protokol, canlı signaling, web DataChannel
-  ve WPF köprüsü kampanyaları; iki gerçek bulgu kapatıldı. Açık: tablo tabanlı
-  süresi geçmiş/replay matrisi (ayrı şeritte) ve bu belgenin tamamlanması.
+  ve WPF köprüsü kampanyaları; 326 testlik signaling durum makinesi matrisi ve bu
+  kanıt belgesi. Üç gerçek bulgu kapatıldı. Tüm maddeler işaretli.
 
 ## Doğrulama tabanı
 
@@ -118,7 +121,8 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 | 2026-10-09 | Taban yenileme | İlk `security:audit` npm'de 6 bulguyla fail-closed kapandı (3 kritik, 1 yüksek, 2 orta); lockfile yükseltmesi sonrası npm + dört NuGet projesi 0 açık; toplu 233 + 1 atlanan; native 42 + 1 atlanan; desktop 106/106 | Birim/entegrasyon | Güncel; `d71b739` |
 | 2026-10-09 | Release provenance | Release politika/katalog 31 → 111/111 | Birim/entegrasyon | Güncel; `971506f`, `8c209df` |
 | 2026-10-09 | Container kapısı | Yerel `linux/amd64` 3/3 hedef HIGH/CRITICAL `0`; application image Node/no-npm smoke'u | Yerel gerçek ortam | Güncel; coturn health ve HMAC relay bu koşuda yeniden çalıştırılmadı |
-| 2026-10-09 | Fuzz dilimi sonrası | Toplu 250 + 1 atlanan (TURN 13, güvenli çıktı 10, container 22, web 106, protocol 18, signaling 81 + 1 atlanan); native 42 + 1 atlanan; desktop 113/113; release 111/111; lint/build/audit temiz | Birim/entegrasyon, fuzz | Güncel; `6bdf2a5` |
+| 2026-10-09 | Fuzz dilimi sonrası | Toplu 250 + 1 atlanan (TURN 13, güvenli çıktı 10, container 22, web 106, protocol 18, signaling 81 + 1 atlanan); native 42 + 1 atlanan; desktop 113/113; release 111/111; lint/build/audit temiz | Birim/entegrasyon, fuzz | `6bdf2a5` |
+| 2026-10-09 | Durum makinesi matrisi ve join düzeltmesi | Durum makinesi 326/326; toplu 576 + 1 atlanan (signaling 407 + 1 atlanan); lint/build temiz; 10 + 5 kasıtlı bozulma matriste düştü | Birim/entegrasyon | Güncel; `20b972b` |
 
 Bu koşuların hiçbiri production ortamında yapılmamıştır. Fiziksel EXE/UI smoke
 2026-09-02 ve 2026-10-09 koşularında çalıştırılmadı; son fiziksel EXE smoke
@@ -161,14 +165,13 @@ Kaynak: [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-09-yerel-linuxamd6
 | Trivy DB `updatedAt` | `2026-10-09T13:10:00Z` |
 | Trivy DB `downloadedAt` | `2026-10-09T13:51:44Z` |
 | Deployment | Yapılmadı |
+| Kaynak notu | Bu image'lar `6bdf2a5` (protokol) ve `20b972b` (signaling) değişikliklerinden önce build edildi; deploy öncesi güncel kaynaktan yeni scan zorunludur |
 
 ## Kabul için kalan sıra
 
-1. Ayrı şeritteki tablo tabanlı süresi geçmiş/replay matrisini birleştir; kriter 1
-   ve 2 ile ilk çıkış kapısını güncelle.
-2. Pi erişim onayıyla `linux/arm64` gerçek container kapısını ve iki servisli
-   deploy smoke'unu çalıştır; canlı stdout/audit kanıtını kaydet.
-3. Gerçek sertifika ve RFC3161 sağlayıcısıyla temiz ağaçtan sequence ≥ 1 adayı
+1. Pi erişim onayıyla güncel kaynaktan `linux/arm64` gerçek container kapısını ve
+   iki servisli deploy smoke'unu çalıştır; canlı stdout/audit kanıtını kaydet.
+2. Gerçek sertifika ve RFC3161 sağlayıcısıyla temiz ağaçtan sequence ≥ 1 adayı
    imzala; temiz Windows 10/11 makinesinde doğrula.
-4. Web/signaling/desktop v3 paketini birlikte production'a al; HTTPS/WSS deployment
+3. Web/signaling/desktop v3 paketini birlikte production'a al; HTTPS/WSS deployment
    testini kaydet ve bu belgeyi son durumla güncelle.

@@ -218,6 +218,9 @@ sonrasına bırakılmıştır.
 - Her derinlikte `__proto__`, eşlenmemiş UTF-16 surrogate ve kap bütçesi reddeden
   protokol ön taraması; istisna yerine temiz ret veren WPF köprü ayrıştırıcıları ve
   protokol, canlı signaling, web DataChannel ve WPF köprüsü için seed'li fuzz matrisi.
+- Tablo tabanlı signaling durum makinesi matrisi (326 test; onaysız, süresi geçmiş,
+  askıdaki ve replay durumları) ve kod bilgisiyle onaylı/askıdaki oturumun
+  sonlandırılamaması.
 - Bulguda duran `npm run security:audit`; npm ve dört .NET proje taraması 0 açık.
 
 2026-08-24 tarihli Faz 4 ikinci dilim tarihsel doğrulama tabanı:
@@ -349,6 +352,9 @@ sonrasına bırakılmıştır.
   desktop 113/113; Windows release 111/111. Fuzz iki gerçek bulgu verdi ve ikisi de
   kapatıldı: iç içe `__proto__` anahtarının sessizce atılması ve WPF köprüsünün
   eşlenmemiş surrogate'ta istisna fırlatması.
+- Durum makinesi matrisi ve `joinSession` düzeltmesi sonrası (`20b972b`) toplu
+  `npm test` 576 başarılı + 1 atlanan (signaling 407 + 1); lint ve build temiz.
+  Kriter bazında kanıt `docs/PHASE4_ACCEPTANCE.md` altındadır.
 
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
@@ -707,9 +713,15 @@ Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-10-09):
   taraması iç içe `__proto__`, eşlenmemiş surrogate ve 2048 kap bütçesini reddeder;
   `BridgeJson` WPF tarafında metin/ad/özellik okumasını istisnasız yapar, yinelenen
   anahtarları ve protokol dışı ICE sunucu alanlarını reddeder.
+- 2026-10-09 durum makinesi dilimi: `services/signaling/test/stateMachine.test.ts`
+  durum × rol × mesaj matrisi (326 test, 10 kasıtlı sunucu bozulmasının 10'u düştü).
+  Bulgu: kodu bilen üçüncü kişi `join_session` ile kod TTL'i geçmiş onaylı oturumu ya
+  da host'u askıdaki oturumu bitirebiliyordu; `joinSession` artık yalnız misafiri
+  olmayan oturumun süre sonunu uygular. Kanıt matrisi `docs/PHASE4_ACCEPTANCE.md`.
 
 Faz 4 tamamlanmadı. Güncel dilim ve açık riskler `docs/PHASE4_PLAN.md`, tehdit
-kaydı `docs/THREAT_MODEL.md` altındadır.
+kaydı `docs/THREAT_MODEL.md`, kriter bazında kabul kanıtı
+`docs/PHASE4_ACCEPTANCE.md` altındadır.
 
 Kalan yapılacaklar:
 
@@ -722,8 +734,7 @@ Kalan yapılacaklar:
   timestamp'i üret; temiz Windows 10/11 doğrulamasını kaydet. Mevcut artifact
   hâlâ `NotSigned`dır. Anti-rollback/build provenance kapısı hazırdır; ilk imzalı
   yayın temiz klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
-- Tablo tabanlı süresi geçmiş/replay state-machine matrisini ekle ve Faz 4 kabul
-  kanıtlarını `docs/PHASE4_ACCEPTANCE.md` altında topla.
+- Pi, imza ve production kanıtı geldikçe `docs/PHASE4_ACCEPTANCE.md`'yi güncelle.
 
 Kabul kriterleri:
 
@@ -905,6 +916,7 @@ Mimari veya protokol değiştiğinde en az şu dosyaları değerlendir:
 - `docs/PHASE3_ACCEPTANCE.md`: Faz 3 kabul kanıtı ve ertelenen fiziksel matris.
 - `docs/THREAT_MODEL.md`: Faz 4 varlık, sınır, risk ve audit veri modeli.
 - `docs/PHASE4_PLAN.md`: Tamamlanan güvenlik dilimleri ve sıradaki açık riskler.
+- `docs/PHASE4_ACCEPTANCE.md`: Faz 4 kriter bazında kanıt, kanıt türü ve eksik girdi.
 - `AGENTS.md`: tamamlanan faz, yeni kabul kriteri veya temel mimari karar.
 
 Yol haritasında tamamlanan işleri bu dosyada uygun bölüme taşı; aynı özelliği hem

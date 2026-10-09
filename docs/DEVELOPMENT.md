@@ -292,7 +292,10 @@ ve WPF köprüsü) iki gerçek bulguyu kapattı: iç içe `__proto__` anahtarın
 strict nesnesince sessizce atılması ve WPF `Try*` ayrıştırıcılarının eşlenmemiş
 surrogate'ta istisna fırlatması. Sonrasında toplu test 250 başarılı + 1 atlanan,
 native 42 başarılı + 1 atlanan, desktop 113/113 ve Windows release 111/111 geçti;
-lint, build ve dependency audit temizdir.
+lint, build ve dependency audit temizdir. Ardından eklenen 326 testlik signaling
+durum makinesi matrisi üçüncü bir bulguyu kapattı (kod bilgisiyle onaylı oturumun
+sonlandırılması); toplu test 576 başarılı + 1 atlanan oldu (`20b972b`). Bu sunucu
+değişikliği EXE adayını etkilemez.
 
 Güncel geliştirme adayı `184835328` bayttır; son yazım zamanı
 `2026-10-09 17:55:07 +03:00`, SHA-256 değeri
