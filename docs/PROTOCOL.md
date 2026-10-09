@@ -42,6 +42,13 @@ değişiklik yeni alt protokol sürümü ve açık minimum sürüm kararı gerek
 
 ## Güvenlik kuralları
 
+- Strict doğrulama yalnız kök nesneyle sınırlı değildir. İstemci, sunucu ve
+  control mesajları ile tek başına kullanılan peer, native-video, signaling payload
+  ve ICE şemaları her derinlikte kendi `__proto__` anahtarını ve eşlenmemiş UTF-16
+  surrogate içeren anahtar/metni reddeder. Meşru mesajların çok üzerindeki 2048 kap
+  bütçesini aşan yapı da reddedilir; tarama yinelemelidir ve derin JSON yığın
+  taşırmaz. Zod strict nesnesi iç içe `__proto__` anahtarını kendiliğinden hata
+  vermeden attığı için bu ön tarama zorunludur.
 - Bağlantı kodları kriptografik rastgelelik kaynağından üretilen 6 hanedir.
 - Kullanılmamış kod 10 dakika sonra geçersiz olur.
 - Bir kod, onaylanmış ilk bağlantıdan sonra tekrar kullanılamaz.
@@ -345,7 +352,10 @@ Web→WPF kontrol köprüsü de ayrı bir strict zarf kullanır. Hem
 `channel: "control"`, `version: 1` ve UUID biçiminde `sessionId` taşır; eksik,
 fazladan veya yanlış sürümlü alan native giriş yetkisini fail-closed kapatır.
 `desktop.control.event.payload` ayrıca yukarıdaki strict `control.event` şemasına
-ikinci kez doğrulanır.
+ikinci kez doğrulanır. WPF köprü ayrıştırıcıları yinelenen anahtarı, eşlenmemiş
+surrogate içeren adı veya metni ve okunamayan JSON metnini `Try*` sözleşmesini
+istisnayla delmeden reddeder; tarayıcının DataChannel oturum ayrıştırıcısı da uzak
+eşten gelen kimlik ve etiketlerde aynı metin kuralını uygular.
 
 ### Signaling üzerinden kalıcı kontrol geri alma
 

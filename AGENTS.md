@@ -215,6 +215,9 @@ sonrasına bırakılmıştır.
   `<sürüm>.<sequence>`), bu kimliği taşıyan strict manifest v2 ve imza öncesi temiz
   kaynak/`HEAD`/sürüm/sequence tabanı kontrol eden anti-rollback/build provenance
   kapısı.
+- Her derinlikte `__proto__`, eşlenmemiş UTF-16 surrogate ve kap bütçesi reddeden
+  protokol ön taraması; istisna yerine temiz ret veren WPF köprü ayrıştırıcıları ve
+  protokol, canlı signaling, web DataChannel ve WPF köprüsü için seed'li fuzz matrisi.
 - Bulguda duran `npm run security:audit`; npm ve dört .NET proje taraması 0 açık.
 
 2026-08-24 tarihli Faz 4 ikinci dilim tarihsel doğrulama tabanı:
@@ -341,6 +344,11 @@ sonrasına bırakılmıştır.
   politika/katalog testleri 111/111 geçti. Gerçek publish adayı kimliği
   `docs/DEVELOPMENT.md` dosyasındadır; aday `NotSigned` ve kirli ağaçtan geliştirme
   build'idir, production kabulü değildir.
+- Fuzz dilimi sonrası toplu `npm test` 250 başarılı + 1 atlanan (TURN 13, güvenli
+  çıktı 10, container 22, web 106, protocol 18, signaling 81 + 1); native 42 + 1;
+  desktop 113/113; Windows release 111/111. Fuzz iki gerçek bulgu verdi ve ikisi de
+  kapatıldı: iç içe `__proto__` anahtarının sessizce atılması ve WPF köprüsünün
+  eşlenmemiş surrogate'ta istisna fırlatması.
 
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
@@ -692,6 +700,13 @@ Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-10-09):
 - 2026-10-09: yeni npm duyuruları sonrası `proxy-addr` 2.0.8, `shell-quote` 1.12.0,
   `source-map-js` 1.2.2 ve `vitest` 4.1.11 lockfile yükseltmeleri; npm/NuGet 0 açık
   ve yerel amd64 container kapısı yeniden 3/3 hedefte 0 bulgu.
+- 2026-10-09 fuzz dilimi: bağımlılıksız seed'li fuzz yardımcısıyla protokol (rastgele
+  JSON, 50 seed mutasyonu, her derinlikte şüpheli anahtar), canlı signaling (kimliksiz,
+  onaylı oturum ve varsayılan-limit suistimal kampanyaları), web DataChannel yetki
+  matrisi ve WPF köprü ayrıştırıcıları için 24 fuzz/regresyon testi. Protokol ön
+  taraması iç içe `__proto__`, eşlenmemiş surrogate ve 2048 kap bütçesini reddeder;
+  `BridgeJson` WPF tarafında metin/ad/özellik okumasını istisnasız yapar, yinelenen
+  anahtarları ve protokol dışı ICE sunucu alanlarını reddeder.
 
 Faz 4 tamamlanmadı. Güncel dilim ve açık riskler `docs/PHASE4_PLAN.md`, tehdit
 kaydı `docs/THREAT_MODEL.md` altındadır.
@@ -707,6 +722,8 @@ Kalan yapılacaklar:
   timestamp'i üret; temiz Windows 10/11 doğrulamasını kaydet. Mevcut artifact
   hâlâ `NotSigned`dır. Anti-rollback/build provenance kapısı hazırdır; ilk imzalı
   yayın temiz klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
+- Tablo tabanlı süresi geçmiş/replay state-machine matrisini ekle ve Faz 4 kabul
+  kanıtlarını `docs/PHASE4_ACCEPTANCE.md` altında topla.
 
 Kabul kriterleri:
 

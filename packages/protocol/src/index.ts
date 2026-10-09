@@ -28,13 +28,17 @@ export const iceServerSchema = z
     'ICE kullanıcı adı ve parolası birlikte verilmelidir.',
   )
 
-export const iceConfigurationSchema = z.strictObject({
+const iceConfigurationObjectSchema = z.strictObject({
   version: z.literal(1),
   expiresAt: z.string().datetime().nullable(),
   iceServers: z.array(iceServerSchema).min(1).max(8),
 })
+export const iceConfigurationSchema = z.preprocess(
+  rejectUnsafeJsonShape,
+  iceConfigurationObjectSchema,
+)
 export type IceServer = z.infer<typeof iceServerSchema>
-export type IceConfiguration = z.infer<typeof iceConfigurationSchema>
+export type IceConfiguration = z.infer<typeof iceConfigurationObjectSchema>
 
 export const resumeTokenSchema = z
   .string()
@@ -110,7 +114,7 @@ const controlMessageUnionSchema = z.discriminatedUnion('type', [
   controlEventSchema,
 ])
 export const controlMessageSchema = z.preprocess(
-  rejectPrototypeRootKey,
+  rejectUnsafeJsonShape,
   controlMessageUnionSchema,
 )
 export type ControlMessage = z.infer<typeof controlMessageSchema>
@@ -184,7 +188,7 @@ const iceCandidateSchema = z.strictObject({
   usernameFragment: z.string().max(256).nullable().optional(),
 })
 
-export const peerSignalSchema = z.discriminatedUnion('kind', [
+const peerSignalObjectSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('session-description'),
     negotiationId: negotiationIdSchema,
@@ -196,26 +200,38 @@ export const peerSignalSchema = z.discriminatedUnion('kind', [
     candidate: iceCandidateSchema,
   }),
 ])
-export type PeerSignal = z.infer<typeof peerSignalSchema>
+export const peerSignalSchema = z.preprocess(
+  rejectUnsafeJsonShape,
+  peerSignalObjectSchema,
+)
+export type PeerSignal = z.infer<typeof peerSignalObjectSchema>
 
-export const nativeVideoSignalEnvelopeSchema = z.strictObject({
+const nativeVideoSignalEnvelopeObjectSchema = z.strictObject({
   channel: z.literal('native-video'),
   version: z.literal(2),
-  signal: peerSignalSchema,
+  signal: peerSignalObjectSchema,
 })
+export const nativeVideoSignalEnvelopeSchema = z.preprocess(
+  rejectUnsafeJsonShape,
+  nativeVideoSignalEnvelopeObjectSchema,
+)
 export type NativeVideoSignalEnvelope = z.infer<
-  typeof nativeVideoSignalEnvelopeSchema
+  typeof nativeVideoSignalEnvelopeObjectSchema
 >
 
-export const signalingPayloadSchema = z.union([
-  peerSignalSchema,
-  nativeVideoSignalEnvelopeSchema,
+const signalingPayloadObjectSchema = z.union([
+  peerSignalObjectSchema,
+  nativeVideoSignalEnvelopeObjectSchema,
 ])
-export type SignalingPayload = z.infer<typeof signalingPayloadSchema>
+export const signalingPayloadSchema = z.preprocess(
+  rejectUnsafeJsonShape,
+  signalingPayloadObjectSchema,
+)
+export type SignalingPayload = z.infer<typeof signalingPayloadObjectSchema>
 
 const signalSchema = z.strictObject({
   type: z.literal('signal'),
-  payload: signalingPayloadSchema,
+  payload: signalingPayloadObjectSchema,
 })
 
 const resumeSessionSchema = z.strictObject({
@@ -253,7 +269,7 @@ const clientMessageUnionSchema = z.discriminatedUnion('type', [
   pingSchema,
 ])
 export const clientMessageSchema = z.preprocess(
-  rejectPrototypeRootKey,
+  rejectUnsafeJsonShape,
   clientMessageUnionSchema,
 )
 
@@ -328,7 +344,7 @@ const serverMessageUnionSchema = z.union([
     code: sessionCodeSchema,
     peerId: participantIdSchema,
     accessMode: controlAccessModeSchema,
-    iceConfiguration: iceConfigurationSchema,
+    iceConfiguration: iceConfigurationObjectSchema,
     resumeToken: resumeTokenSchema,
     reconnectGraceSeconds: reconnectGraceSecondsSchema,
   }),
@@ -336,7 +352,7 @@ const serverMessageUnionSchema = z.union([
     type: z.literal('peer_joined'),
     peerId: participantIdSchema,
     accessMode: controlAccessModeSchema,
-    iceConfiguration: iceConfigurationSchema,
+    iceConfiguration: iceConfigurationObjectSchema,
     resumeToken: resumeTokenSchema,
     reconnectGraceSeconds: reconnectGraceSecondsSchema,
   }),
@@ -349,7 +365,7 @@ const serverMessageUnionSchema = z.union([
     resumeToken: resumeTokenSchema,
     peerConnected: z.boolean(),
     reconnectGraceSeconds: reconnectGraceSecondsSchema,
-    iceConfiguration: iceConfigurationSchema,
+    iceConfiguration: iceConfigurationObjectSchema,
   }),
   z.strictObject({
     type: z.literal('peer_suspended'),
@@ -358,11 +374,11 @@ const serverMessageUnionSchema = z.union([
   z.strictObject({
     type: z.literal('peer_resumed'),
     peerId: participantIdSchema,
-    iceConfiguration: iceConfigurationSchema,
+    iceConfiguration: iceConfigurationObjectSchema,
   }),
   z.strictObject({
     type: z.literal('ice_configuration'),
-    iceConfiguration: iceConfigurationSchema,
+    iceConfiguration: iceConfigurationObjectSchema,
   }),
   z.strictObject({ type: z.literal('request_rejected') }),
   z.strictObject({ type: z.literal('peer_left') }),
@@ -373,25 +389,70 @@ const serverMessageUnionSchema = z.union([
   z.strictObject({
     type: z.literal('signal'),
     from: participantIdSchema,
-    payload: signalingPayloadSchema,
+    payload: signalingPayloadObjectSchema,
   }),
   z.strictObject({ type: z.literal('pong') }),
   serverErrorMessageSchema,
 ])
 export const serverMessageSchema = z.preprocess(
-  rejectPrototypeRootKey,
+  rejectUnsafeJsonShape,
   serverMessageUnionSchema,
 )
 
 export type ServerMessage = z.infer<typeof serverMessageSchema>
 
-function rejectPrototypeRootKey(value: unknown): unknown {
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    Object.prototype.hasOwnProperty.call(value, '__proto__')
-  ) {
-    return undefined
+// Strict şemaların tek başına göremediği yapı risklerini tek geçişte reddeder:
+// - Zod strict nesneleri iç içe kendi `__proto__` anahtarını hata vermeden atar;
+//   strict sözleşme bilinmeyen anahtarı reddettiği için bu anahtar her derinlikte
+//   reddedilir.
+// - Eşlenmemiş surrogate içeren anahtar/metin UTF-8 hattında temsil edilemez;
+//   .NET köprüsü böyle bir değeri okurken istisna fırlatır, burada reddedilir.
+// Tarama yinelemelidir (derin JSON yığın taşırmaz); meşru mesajların çok
+// üzerindeki bir kap bütçesini aşan girdi de reddedilir.
+const MAX_JSON_SHAPE_SCAN_CONTAINERS = 2_048
+
+function rejectUnsafeJsonShape(value: unknown): unknown {
+  if (typeof value === 'string') return isWellFormedText(value) ? value : undefined
+  if (value === null || typeof value !== 'object') return value
+  const pending: object[] = [value]
+  let containers = 1
+  while (pending.length > 0) {
+    const current = pending.pop() as object
+    let children: unknown[]
+    if (Array.isArray(current)) {
+      children = current
+    } else {
+      if (Object.prototype.hasOwnProperty.call(current, '__proto__')) {
+        return undefined
+      }
+      const keys = Object.keys(current)
+      if (!keys.every(isWellFormedText)) return undefined
+      children = keys.map((key) => (current as Record<string, unknown>)[key])
+    }
+    for (const child of children) {
+      if (typeof child === 'string') {
+        if (!isWellFormedText(child)) return undefined
+        continue
+      }
+      if (child === null || typeof child !== 'object') continue
+      containers += 1
+      if (containers > MAX_JSON_SHAPE_SCAN_CONTAINERS) return undefined
+      pending.push(child)
+    }
   }
   return value
+}
+
+function isWellFormedText(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index)
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1)
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false
+      index += 1
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false
+    }
+  }
+  return true
 }

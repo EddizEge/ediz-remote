@@ -184,6 +184,40 @@ Dilim 4 kararı:
   ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz Windows 10/11
   doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.
 
+## Dilim 6 — Fuzz ve bozuk mesaj matrisi
+
+- [x] Seed'li, deterministik ve yeni bağımlılık eklemeyen fuzz yardımcısı
+  (`packages/protocol/test/fuzzSupport.ts`): mulberry32 PRNG, rastgele JSON,
+  yapısal mutasyon, kendi-özellik olarak şüpheli anahtar ekleme ve kanonik
+  karşılaştırma. Başarısızlık mesajı seed ve iterasyonu verir.
+- [x] Protokol: rastgele JSON ve 50 geçerli seed'in mutasyonlarında hiçbir şema
+  istisna fırlatmaz; kabul edilen değer girdiyle kanonik olarak aynıdır (sessiz
+  ayıklama/dönüştürme yok); şüpheli anahtarlar her nesne derinliğinde reddedilir.
+- [x] Fuzz bulgusu: Zod strict nesneleri iç içe `__proto__` anahtarını hata vermeden
+  atıyordu. Protokol ön taraması bu anahtarı her derinlikte, eşlenmemiş surrogate
+  içeren anahtar/metni ve 2048 kap bütçesini aşan yapıyı reddeder; tek başına
+  kullanılan peer/native-video/signaling payload/ICE şemaları da aynı taramadan geçer.
+- [x] Canlı signaling: kimliksiz soket kampanyası (bozuk UTF-8, aşırı frame, binary,
+  derin/geniş JSON ve prototip denemeleri), onaylı oturumda iki üyenin mutasyonlu
+  trafiği ve varsayılan limitlerle suistimal kampanyası. Sunucunun her frame'i şemaya
+  uyar; onaysız sokete signal/onay ulaşmaz; relay edilen payload karşı tarafın
+  gönderdiği geçerli payload'la birebir aynıdır ve offer/answer yönüne uyar;
+  `Object.prototype` kirlenmez; health ve sonrasında temiz bir çiftin relay'i sağlamdır.
+  Kapsam alt sınırları kampanyaların boş geçmediğini doğrular.
+- [x] Web DataChannel ayrıştırıcısı: rastgele metin/JSON ve 16 seed'in mutasyonlarında
+  istisna yok, kabul edilen mesaj birebir, yetki matrisi (pointer kanalı yalnız kontrol
+  yetkili host'a `pointer.move`; misafire operatör komutu yok) korunur.
+- [x] Fuzz bulgusu: .NET `GetString()` ve `TryGetProperty` kaçışlı eşlenmemiş
+  surrogate'ta istisna fırlatıyordu; yetkili uzak operatör bir tuş/SDP değeriyle
+  WPF `Try*` ayrıştırıcısını patlatıp catch-all üzerinden kendi kontrol/native video
+  oturumunu kapatabiliyordu. `BridgeJson` güvenli okuma yardımcıları, yinelenen anahtar
+  reddi ve protokolle aynı strict ICE sunucu biçimi eklendi.
+- [x] Oracle doğrulaması: eski protokol koruması ve eski WPF ayrıştırıcıları fuzz
+  testlerinde düştü; sunucuya bilerek eklenen handler istisnası canlı kampanyada
+  işlenmemiş hata olarak yakalandı.
+- [ ] Tablo tabanlı süresi geçmiş/replay state-machine matrisi ve kanıtların
+  `docs/PHASE4_ACCEPTANCE.md` altında toplanması.
+
 ## Faz 4 kabul durumu
 
 Faz 4 henüz tamamlanmadı. İlk dört dilim downgrade/origin/proxy/payload, kaynak

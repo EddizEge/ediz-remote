@@ -1335,26 +1335,25 @@ public partial class MainWindow : Window
         out string result)
     {
         result = string.Empty;
-        if (!element.TryGetProperty(propertyName, out var value) ||
-            value.ValueKind != JsonValueKind.String)
+        if (!BridgeJson.TryGetProperty(element, propertyName, out var value) ||
+            !BridgeJson.TryGetString(value, out result))
         {
             return false;
         }
-        result = value.GetString() ?? string.Empty;
         return result.Length >= minimumLength && result.Length <= maximumLength;
     }
 
     private static string? GetOptionalString(JsonElement element, string propertyName)
     {
-        return element.TryGetProperty(propertyName, out var value) &&
-               value.ValueKind == JsonValueKind.String
-            ? value.GetString()
+        return BridgeJson.TryGetProperty(element, propertyName, out var value) &&
+               BridgeJson.TryGetString(value, out var text)
+            ? text
             : null;
     }
 
     private static ushort? GetOptionalUInt16(JsonElement element, string propertyName)
     {
-        return element.TryGetProperty(propertyName, out var value) &&
+        return BridgeJson.TryGetProperty(element, propertyName, out var value) &&
                value.ValueKind == JsonValueKind.Number &&
                value.TryGetUInt16(out var result)
             ? result
@@ -1363,7 +1362,7 @@ public partial class MainWindow : Window
 
     internal static IReadOnlyList<NativeVideoIceServer> ParseIceServers(JsonElement root)
     {
-        if (!root.TryGetProperty("iceServers", out var servers) ||
+        if (!BridgeJson.TryGetProperty(root, "iceServers", out var servers) ||
             servers.ValueKind != JsonValueKind.Array ||
             servers.GetArrayLength() is < 1 or > 8)
         {
@@ -1373,7 +1372,14 @@ public partial class MainWindow : Window
         var result = new List<NativeVideoIceServer>();
         foreach (var server in servers.EnumerateArray())
         {
-            if (!server.TryGetProperty("urls", out var urls) ||
+            // Protokoldeki strict iceServerSchema ile aynı: yalnız urls,
+            // username ve credential; yinelenen veya okunamayan ad reddedilir.
+            if (server.ValueKind != JsonValueKind.Object ||
+                !HasOnlyIceServerProperties(server))
+            {
+                throw new InvalidOperationException("Native ICE sunucu alanları geçersiz.");
+            }
+            if (!BridgeJson.TryGetProperty(server, "urls", out var urls) ||
                 urls.ValueKind != JsonValueKind.Array ||
                 urls.GetArrayLength() is < 1 or > 4)
             {
@@ -1390,9 +1396,7 @@ public partial class MainWindow : Window
 
             foreach (var value in urls.EnumerateArray())
             {
-                var url = value.ValueKind == JsonValueKind.String
-                    ? value.GetString()
-                    : null;
+                var url = BridgeJson.TryGetString(value, out var text) ? text : null;
                 if (string.IsNullOrWhiteSpace(url) ||
                     url.Length > 512 ||
                     !IsSupportedIceUrl(url))
@@ -1415,20 +1419,32 @@ public partial class MainWindow : Window
         string propertyName,
         int maximumLength)
     {
-        if (!element.TryGetProperty(propertyName, out var value))
+        if (!BridgeJson.TryGetProperty(element, propertyName, out var value))
         {
             return null;
         }
-        if (value.ValueKind != JsonValueKind.String)
-        {
-            throw new InvalidOperationException($"Native ICE {propertyName} değeri geçersiz.");
-        }
-        var result = value.GetString();
-        if (string.IsNullOrWhiteSpace(result) || result.Length > maximumLength)
+        if (!BridgeJson.TryGetString(value, out var result) ||
+            string.IsNullOrWhiteSpace(result) ||
+            result.Length > maximumLength)
         {
             throw new InvalidOperationException($"Native ICE {propertyName} değeri geçersiz.");
         }
         return result;
+    }
+
+    private static bool HasOnlyIceServerProperties(JsonElement server)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var property in server.EnumerateObject())
+        {
+            if (!BridgeJson.TryGetName(property, out var name) ||
+                name is not ("urls" or "username" or "credential") ||
+                !seen.Add(name))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static bool IsSupportedIceUrl(string url)

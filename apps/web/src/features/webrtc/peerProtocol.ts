@@ -110,9 +110,7 @@ export function parseDataChannelMessage(value: string): DataChannelMessage | nul
     if (
       (parsed.type === 'ping' || parsed.type === 'pong') &&
       hasExactlyKeys(parsed, ['type', 'id', 'sentAt']) &&
-      typeof parsed.id === 'string' &&
-      parsed.id.length > 0 &&
-      parsed.id.length <= 64 &&
+      isBoundedString(parsed.id, 64) &&
       typeof parsed.sentAt === 'number' &&
       Number.isSafeInteger(parsed.sentAt) &&
       parsed.sentAt >= 0
@@ -425,8 +423,29 @@ function hasValidSessionEnvelope(value: Record<string, unknown>): boolean {
   )
 }
 
+// Eşlenmemiş surrogate içeren metin UTF-8 köprüsünde temsil edilemez ve .NET
+// tarafında okunamaz; uzak eşten gelen kimlik/etiketlerde reddedilir.
 function isBoundedString(value: unknown, maximumLength: number): value is string {
-  return typeof value === 'string' && value.length > 0 && value.length <= maximumLength
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= maximumLength &&
+    isWellFormedText(value)
+  )
+}
+
+function isWellFormedText(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index)
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1)
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return false
+      index += 1
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return false
+    }
+  }
+  return true
 }
 
 function isNormalizedCoordinate(value: unknown): value is number {

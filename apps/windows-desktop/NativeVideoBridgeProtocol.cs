@@ -113,19 +113,19 @@ internal static class NativeVideoBridgeProtocol
                 "desktop.native-video.signal",
                 ["type", "channel", "version", "sessionEpoch", "payload"],
                 out sessionEpoch) ||
-            !root.TryGetProperty("payload", out var payload) ||
+            !BridgeJson.TryGetProperty(root, "payload", out var payload) ||
             payload.ValueKind != JsonValueKind.Object ||
             !TryReadUuid(payload, "negotiationId", out var negotiationId) ||
-            !payload.TryGetProperty("kind", out var kind) ||
-            kind.ValueKind != JsonValueKind.String)
+            !BridgeJson.TryGetProperty(payload, "kind", out var kind) ||
+            !BridgeJson.TryGetString(kind, out var kindValue))
         {
             return false;
         }
 
-        if (kind.GetString() == "session-description")
+        if (kindValue == "session-description")
         {
             if (!HasExactlyProperties(payload, ["kind", "negotiationId", "description"]) ||
-                !payload.TryGetProperty("description", out var description) ||
+                !BridgeJson.TryGetProperty(payload, "description", out var description) ||
                 description.ValueKind != JsonValueKind.Object ||
                 !HasExactlyProperties(description, ["type", "sdp"]) ||
                 !TryReadString(description, "type", 1, 16, out var type) ||
@@ -142,9 +142,9 @@ internal static class NativeVideoBridgeProtocol
             return true;
         }
 
-        if (kind.GetString() != "ice-candidate" ||
+        if (kindValue != "ice-candidate" ||
             !HasExactlyProperties(payload, ["kind", "negotiationId", "candidate"]) ||
-            !payload.TryGetProperty("candidate", out var candidate) ||
+            !BridgeJson.TryGetProperty(payload, "candidate", out var candidate) ||
             candidate.ValueKind != JsonValueKind.Object ||
             !HasOnlyProperties(
                 candidate,
@@ -185,7 +185,7 @@ internal static class NativeVideoBridgeProtocol
                type == expectedType &&
                TryReadString(root, "channel", 1, 32, out var channel) &&
                channel == "native-video" &&
-               root.TryGetProperty("version", out var version) &&
+               BridgeJson.TryGetProperty(root, "version", out var version) &&
                version.ValueKind == JsonValueKind.Number &&
                version.TryGetInt32(out var versionValue) &&
                versionValue == Version &&
@@ -218,12 +218,11 @@ internal static class NativeVideoBridgeProtocol
         out string result)
     {
         result = string.Empty;
-        if (!value.TryGetProperty(propertyName, out var property) ||
-            property.ValueKind != JsonValueKind.String)
+        if (!BridgeJson.TryGetProperty(value, propertyName, out var property) ||
+            !BridgeJson.TryGetString(property, out result))
         {
             return false;
         }
-        result = property.GetString() ?? string.Empty;
         return result.Length >= minimumLength && result.Length <= maximumLength;
     }
 
@@ -234,14 +233,14 @@ internal static class NativeVideoBridgeProtocol
         out string? result)
     {
         result = null;
-        if (!value.TryGetProperty(propertyName, out var property) ||
+        if (!BridgeJson.TryGetProperty(value, propertyName, out var property) ||
             property.ValueKind == JsonValueKind.Null)
         {
             return true;
         }
-        if (property.ValueKind != JsonValueKind.String) return false;
-        result = property.GetString();
-        return result is not null && result.Length <= maximumLength;
+        if (!BridgeJson.TryGetString(property, out var text)) return false;
+        result = text;
+        return result.Length <= maximumLength;
     }
 
     private static bool TryReadOptionalUInt16(
@@ -250,7 +249,7 @@ internal static class NativeVideoBridgeProtocol
         out ushort? result)
     {
         result = null;
-        if (!value.TryGetProperty(propertyName, out var property) ||
+        if (!BridgeJson.TryGetProperty(value, propertyName, out var property) ||
             property.ValueKind == JsonValueKind.Null)
         {
             return true;
@@ -268,22 +267,34 @@ internal static class NativeVideoBridgeProtocol
         JsonElement value,
         IReadOnlyCollection<string> expectedProperties)
     {
-        var count = 0;
+        // Yinelenen anahtar eksik bir anahtarın yerini tutamaz: her ad bir kez
+        // görülmelidir.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
-            if (!expectedProperties.Contains(property.Name)) return false;
-            count++;
+            if (!BridgeJson.TryGetName(property, out var name) ||
+                !expectedProperties.Contains(name) ||
+                !seen.Add(name))
+            {
+                return false;
+            }
         }
-        return count == expectedProperties.Count;
+        return seen.Count == expectedProperties.Count;
     }
 
     private static bool HasOnlyProperties(
         JsonElement value,
         IReadOnlyCollection<string> allowedProperties)
     {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in value.EnumerateObject())
         {
-            if (!allowedProperties.Contains(property.Name)) return false;
+            if (!BridgeJson.TryGetName(property, out var name) ||
+                !allowedProperties.Contains(name) ||
+                !seen.Add(name))
+            {
+                return false;
+            }
         }
         return true;
     }

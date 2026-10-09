@@ -313,4 +313,80 @@ describe('signaling protocol security boundary', () => {
       ({} as { edizRemotePolluted?: boolean }).edizRemotePolluted,
     ).toBeUndefined()
   })
+
+  it('rejects nested prototype keys that a strict object would otherwise drop silently', () => {
+    const nestedCandidate = JSON.parse(
+      `{"type":"signal","payload":{"kind":"ice-candidate","negotiationId":"${negotiationId}",` +
+        '"candidate":{"candidate":"x","__proto__":{"edizRemotePolluted":true}}}}',
+    )
+    expect(clientMessageSchema.safeParse(nestedCandidate).success).toBe(false)
+    expect(
+      clientMessageSchema.safeParse({
+        type: 'signal',
+        payload: {
+          kind: 'ice-candidate',
+          negotiationId,
+          candidate: { candidate: 'x' },
+        },
+      }).success,
+    ).toBe(true)
+
+    const nestedControlEvent = JSON.parse(
+      '{"channel":"control","version":1,"type":"control.event","sequence":1,' +
+        '"event":{"kind":"pointer.move","x":0.5,"y":0.5,"__proto__":{}}}',
+    )
+    expect(controlMessageSchema.safeParse(nestedControlEvent).success).toBe(false)
+
+    const nestedServerIce = JSON.parse(
+      '{"type":"ice_configuration","iceConfiguration":{"version":1,"expiresAt":null,' +
+        '"iceServers":[{"urls":["stun:stun.example.invalid"],"__proto__":{}}]}}',
+    )
+    expect(serverMessageSchema.safeParse(nestedServerIce).success).toBe(false)
+    expect(
+      nativeVideoSignalEnvelopeSchema.safeParse(
+        JSON.parse(
+          `{"channel":"native-video","version":2,"signal":{"kind":"ice-candidate",` +
+            `"negotiationId":"${negotiationId}","candidate":{"candidate":"","__proto__":null}}}`,
+        ),
+      ).success,
+    ).toBe(false)
+    expect(
+      ({} as { edizRemotePolluted?: boolean }).edizRemotePolluted,
+    ).toBeUndefined()
+  })
+
+  it('rejects unpaired UTF-16 surrogates anywhere but keeps well-formed pairs', () => {
+    const keyboardEvent = (key: string) => ({
+      channel: 'control',
+      version: 1,
+      type: 'control.event',
+      sequence: 1,
+      event: { kind: 'keyboard.key', code: 'KeyA', key, location: 0, down: true, repeat: false },
+    })
+    expect(controlMessageSchema.safeParse(keyboardEvent('\u{1F600}')).success).toBe(true)
+    for (const key of ['\ud800', '\udc00', 'a\ud800', '\udc00\ud800']) {
+      expect(controlMessageSchema.safeParse(keyboardEvent(key)).success).toBe(false)
+    }
+    // JSON metninde kaçışlı tek surrogate da aynı yoldan reddedilir.
+    expect(
+      clientMessageSchema.safeParse(
+        JSON.parse(
+          `{"type":"signal","payload":{"kind":"session-description","negotiationId":"${negotiationId}",` +
+            '"description":{"type":"offer","sdp":"v=0\\r\\na=x:\\ud800\\r\\n"}}}',
+        ),
+      ).success,
+    ).toBe(false)
+    expect(
+      clientMessageSchema.safeParse(
+        JSON.parse('{"type":"ping","\\ud800":true}'),
+      ).success,
+    ).toBe(false)
+    expect(
+      serverMessageSchema.safeParse({
+        type: 'error',
+        code: 'invalid_message',
+        message: 'Geçersiz \ud800',
+      }).success,
+    ).toBe(false)
+  })
 })

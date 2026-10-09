@@ -280,7 +280,7 @@ internal static class ControlBridgeProtocol
                    "desktop.control.set-enabled",
                    ["type", "channel", "version", "sessionId", "enabled"]) &&
                TryReadSessionId(root, out sessionId) &&
-               root.TryGetProperty("enabled", out var enabledValue) &&
+               BridgeJson.TryGetProperty(root, "enabled", out var enabledValue) &&
                enabledValue.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                SetBoolean(enabledValue.GetBoolean(), out enabled);
     }
@@ -297,7 +297,7 @@ internal static class ControlBridgeProtocol
                    "desktop.control.event",
                    ["type", "channel", "version", "sessionId", "payload"]) &&
                TryReadSessionId(root, out sessionId) &&
-               root.TryGetProperty("payload", out var payload) &&
+               BridgeJson.TryGetProperty(root, "payload", out var payload) &&
                ControlEventParser.TryParse(payload, out controlEvent) &&
                controlEvent is not null;
     }
@@ -308,20 +308,24 @@ internal static class ControlBridgeProtocol
         IReadOnlyCollection<string> expectedProperties)
     {
         if (root.ValueKind != JsonValueKind.Object) return false;
-        var count = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var property in root.EnumerateObject())
         {
-            if (!expectedProperties.Contains(property.Name)) return false;
-            count++;
+            if (!BridgeJson.TryGetName(property, out var name) ||
+                !expectedProperties.Contains(name) ||
+                !seen.Add(name))
+            {
+                return false;
+            }
         }
-        return count == expectedProperties.Count &&
-               root.TryGetProperty("type", out var type) &&
-               type.ValueKind == JsonValueKind.String &&
-               type.GetString() == expectedType &&
-               root.TryGetProperty("channel", out var channel) &&
-               channel.ValueKind == JsonValueKind.String &&
-               channel.GetString() == "control" &&
-               root.TryGetProperty("version", out var version) &&
+        return seen.Count == expectedProperties.Count &&
+               BridgeJson.TryGetProperty(root, "type", out var type) &&
+               BridgeJson.TryGetString(type, out var typeValue) &&
+               typeValue == expectedType &&
+               BridgeJson.TryGetProperty(root, "channel", out var channel) &&
+               BridgeJson.TryGetString(channel, out var channelValue) &&
+               channelValue == "control" &&
+               BridgeJson.TryGetProperty(root, "version", out var version) &&
                version.ValueKind == JsonValueKind.Number &&
                version.TryGetInt32(out var parsedVersion) &&
                parsedVersion == Version;
@@ -330,12 +334,11 @@ internal static class ControlBridgeProtocol
     private static bool TryReadSessionId(JsonElement root, out string sessionId)
     {
         sessionId = string.Empty;
-        if (!root.TryGetProperty("sessionId", out var value) ||
-            value.ValueKind != JsonValueKind.String)
+        if (!BridgeJson.TryGetProperty(root, "sessionId", out var value) ||
+            !BridgeJson.TryGetString(value, out sessionId))
         {
             return false;
         }
-        sessionId = value.GetString() ?? string.Empty;
         return sessionId.Length == 36 && Guid.TryParseExact(sessionId, "D", out _);
     }
 
@@ -363,15 +366,15 @@ internal static class ControlEventParser
             !HasInt32(value, "version", 1) ||
             !HasString(value, "type", "control.event") ||
             !TryGetSequence(value, out var sequence) ||
-            !value.TryGetProperty("event", out var eventValue) ||
+            !BridgeJson.TryGetProperty(value, "event", out var eventValue) ||
             eventValue.ValueKind != JsonValueKind.Object ||
-            !eventValue.TryGetProperty("kind", out var kindValue) ||
-            kindValue.ValueKind != JsonValueKind.String)
+            !BridgeJson.TryGetProperty(eventValue, "kind", out var kindValue) ||
+            !BridgeJson.TryGetString(kindValue, out var kind))
         {
             return false;
         }
 
-        switch (kindValue.GetString())
+        switch (kind)
         {
             case "pointer.move":
                 if (!HasExactlyProperties(eventValue, "kind", "x", "y") ||
@@ -382,8 +385,8 @@ internal static class ControlEventParser
                 return true;
             case "pointer.button":
                 var hasButtonPoint =
-                    eventValue.TryGetProperty("x", out _) ||
-                    eventValue.TryGetProperty("y", out _);
+                    BridgeJson.TryGetProperty(eventValue, "x", out _) ||
+                    BridgeJson.TryGetProperty(eventValue, "y", out _);
                 if (!(hasButtonPoint
                         ? HasExactlyProperties(
                             eventValue,
@@ -455,7 +458,11 @@ internal static class ControlEventParser
         foreach (var property in value.EnumerateObject())
         {
             count++;
-            if (!remaining.Remove(property.Name)) return false;
+            if (!BridgeJson.TryGetName(property, out var name) ||
+                !remaining.Remove(name))
+            {
+                return false;
+            }
         }
         return count == expectedPropertyNames.Length && remaining.Count == 0;
     }
@@ -463,7 +470,7 @@ internal static class ControlEventParser
     private static bool TryGetSequence(JsonElement value, out long sequence)
     {
         sequence = 0;
-        return value.TryGetProperty("sequence", out var property) &&
+        return BridgeJson.TryGetProperty(value, "sequence", out var property) &&
                property.ValueKind == JsonValueKind.Number &&
                property.TryGetInt64(out sequence) &&
                sequence is >= 0 and <= 9_007_199_254_740_991;
@@ -474,10 +481,10 @@ internal static class ControlEventParser
         out RemotePointerButton button)
     {
         button = default;
-        if (!value.TryGetProperty("button", out var property) ||
-            property.ValueKind != JsonValueKind.String)
+        if (!BridgeJson.TryGetProperty(value, "button", out var property) ||
+            !BridgeJson.TryGetString(property, out var buttonName))
             return false;
-        return property.GetString() switch
+        return buttonName switch
         {
             "left" => SetButton(RemotePointerButton.Left, out button),
             "middle" => SetButton(RemotePointerButton.Middle, out button),
@@ -493,8 +500,8 @@ internal static class ControlEventParser
     {
         x = null;
         y = null;
-        var hasX = value.TryGetProperty("x", out _);
-        var hasY = value.TryGetProperty("y", out _);
+        var hasX = BridgeJson.TryGetProperty(value, "x", out _);
+        var hasY = BridgeJson.TryGetProperty(value, "y", out _);
         if (!hasX && !hasY) return true;
         if (!hasX || !hasY ||
             !TryGetBoundedDouble(value, "x", 0, 1, out var parsedX) ||
@@ -519,7 +526,7 @@ internal static class ControlEventParser
         out bool result)
     {
         result = false;
-        if (!value.TryGetProperty(propertyName, out var property) ||
+        if (!BridgeJson.TryGetProperty(value, propertyName, out var property) ||
             property.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
             return false;
         result = property.GetBoolean();
@@ -534,10 +541,9 @@ internal static class ControlEventParser
         out string result)
     {
         result = string.Empty;
-        if (!value.TryGetProperty(propertyName, out var property) ||
-            property.ValueKind != JsonValueKind.String)
+        if (!BridgeJson.TryGetProperty(value, propertyName, out var property) ||
+            !BridgeJson.TryGetString(property, out result))
             return false;
-        result = property.GetString() ?? string.Empty;
         return result.Length >= minimumLength && result.Length <= maximumLength;
     }
 
@@ -549,7 +555,7 @@ internal static class ControlEventParser
         out double result)
     {
         result = 0;
-        return value.TryGetProperty(propertyName, out var property) &&
+        return BridgeJson.TryGetProperty(value, propertyName, out var property) &&
                property.ValueKind == JsonValueKind.Number &&
                property.TryGetDouble(out result) &&
                double.IsFinite(result) &&
@@ -565,7 +571,7 @@ internal static class ControlEventParser
         out int result)
     {
         result = 0;
-        return value.TryGetProperty(propertyName, out var property) &&
+        return BridgeJson.TryGetProperty(value, propertyName, out var property) &&
                property.ValueKind == JsonValueKind.Number &&
                property.TryGetInt32(out result) &&
                result >= minimum &&
@@ -576,15 +582,15 @@ internal static class ControlEventParser
         JsonElement value,
         string propertyName,
         string expected) =>
-        value.TryGetProperty(propertyName, out var property) &&
-        property.ValueKind == JsonValueKind.String &&
-        property.GetString() == expected;
+        BridgeJson.TryGetProperty(value, propertyName, out var property) &&
+        BridgeJson.TryGetString(property, out var text) &&
+        text == expected;
 
     private static bool HasInt32(
         JsonElement value,
         string propertyName,
         int expected) =>
-        value.TryGetProperty(propertyName, out var property) &&
+        BridgeJson.TryGetProperty(value, propertyName, out var property) &&
         property.ValueKind == JsonValueKind.Number &&
         property.TryGetInt32(out var result) &&
         result == expected;

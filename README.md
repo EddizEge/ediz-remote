@@ -153,8 +153,9 @@ npm run security:audit
 
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
 ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-09 yerel tabanında
-233 npm testi, 42 native testi, 106 desktop testi ve 111 Windows release testi
-başarılıdır; npm/native paketlerinde birer ortam testi atlanmıştır.
+seed'li fuzz matrisi dahil 250 npm testi, 42 native testi, 113 desktop testi ve
+111 Windows release testi başarılıdır; npm/native paketlerinde birer ortam testi
+atlanmıştır.
 Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOPMENT.md).
 
 ## Yol haritası
