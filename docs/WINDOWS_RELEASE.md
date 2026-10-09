@@ -157,6 +157,12 @@ $env:EDIZ_REMOTE_SIGNTOOL_PATH = 'C:\Program Files (x86)\Windows Kits\10\bin\<sd
 npm run release:windows:sign
 ```
 
+Zaman damgası sağlayıcısı kod imzalama sertifikasını veren CA'dan bağımsız seçilebilir.
+2026-10-09'da `https://timestamp.sectigo.com` HTTPS üzerinden RFC3161 `Granted` yanıtı
+verdi; DigiCert, GlobalSign, SSL.com ve Entrust'ın belgelenen uç noktaları HTTPS
+bağlantısını kabul etmedi. Windows'un güvenmediği sağlayıcılar (ör. FreeTSA)
+`signtool verify /tw` doğrulamasından geçmez; HTTPS şartı gevşetilmez.
+
 `release:windows:sign` önce yukarıdaki provenance ve anti-rollback ön koşullarını
 doğrular; ardından sırasıyla EXE'yi imzalar, imzalı EXE'nin manifestini yazar,
 yayın ağacı için catalog version 2 (SHA-256) üretir, kataloğu aynı sertifikayla
