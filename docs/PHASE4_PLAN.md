@@ -165,21 +165,34 @@ Dilim 4 kararı:
 - [x] Strict release manifesti dahil tüm `win-x64` ağacını, ağacın dışındaki
   SHA-256 Windows File Catalog v2 ile kapsa; `Test-FileCatalog=Valid/SHA256`,
   bounded/reparse/TOCTOU kontrollerini ekle.
+- [x] 2026-10-09 yeni duyuruları sonrası `proxy-addr` 2.0.8, `shell-quote`
+  1.12.0 (`concurrently` 9.2.5), `source-map-js` 1.2.2 ve `vitest` 4.1.11'e
+  bildirilen semver aralıkları içinde yükselt; `npm audit` ve dört NuGet projesi
+  0 açık.
+- [x] Release kimliğini EXE sürüm kaynağına göm: `ProductVersion`
+  `<sürüm>+<commit>[.dirty]`, `FileVersion` `<sürüm>.<sequence>`. Manifesti bu
+  kimliği taşıyan strict şema v2'ye yükselt; publish sırasında kaynak değişirse
+  EXE'yi bırakma.
+- [x] Anti-rollback/build provenance politikasını kapıya bağla: imza öncesi temiz
+  ağaç, `HEAD` = gömülü commit, `package.json` sürümü, sequence ≥ 1 ve güvenilir
+  `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanı; verify'da manifest/EXE kimlik eşliği,
+  temiz kaynak ve taban. Gerçek PE fixture'lı 111 politika testi.
 - [ ] Pi `linux/arm64` hedefinde gerçek container kapısını sıfır bulguyla geçir;
   UID 1000 secret/audit volume ve application/coturn health deployment smoke
   kanıtını kaydet.
-- [ ] Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161 servisiyle EXE ile
-  katalogu imzala; temiz Windows 10/11 doğrulaması ve anti-rollback/build
-  provenance politikasını kaydet.
+- [ ] Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161 servisiyle temiz
+  ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz Windows 10/11
+  doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.
 
 ## Faz 4 kabul durumu
 
 Faz 4 henüz tamamlanmadı. İlk dört dilim downgrade/origin/proxy/payload, kaynak
 kotaları, brute-force/flood, negotiation replay/pending ICE, DataChannel yetkisi,
 hassas çıktı sınırları ve minimal audit'i kapatır. Beşinci dilimin dependency,
-container ve Windows release kapıları kod/politika olarak tamamlandı. Faz 4 kabulü
-için gerçek Pi hedef-platform taramasının sıfır bulguyla geçmesi, gerçek EXE +
-katalog Authenticode/RFC3161 imzası ve temiz makine doğrulaması gerekir.
+container, Windows release ve anti-rollback/build provenance kapıları kod/politika
+olarak tamamlandı. Faz 4 kabulü için gerçek Pi hedef-platform taramasının sıfır
+bulguyla geçmesi, gerçek EXE + katalog Authenticode/RFC3161 imzası ve temiz makine
+doğrulaması gerekir.
 
 ## İkinci dilim tarihsel doğrulama özeti
 

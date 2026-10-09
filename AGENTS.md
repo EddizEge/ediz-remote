@@ -211,6 +211,10 @@ sonrasına bırakılmıştır.
 - Store/HSM-only Windows release modeli; strict EXE manifesti ve tüm `win-x64`
   ağacını kapsayan dış SHA-256 Catalog v2 için exact signer, RFC3161 timestamp,
   iki Authenticode/SignTool ve `Test-FileCatalog` doğrulaması.
+- EXE sürüm kaynağına gömülü release kimliği (`<sürüm>+<commit>[.dirty]`,
+  `<sürüm>.<sequence>`), bu kimliği taşıyan strict manifest v2 ve imza öncesi temiz
+  kaynak/`HEAD`/sürüm/sequence tabanı kontrol eden anti-rollback/build provenance
+  kapısı.
 - Bulguda duran `npm run security:audit`; npm ve dört .NET proje taraması 0 açık.
 
 2026-08-24 tarihli Faz 4 ikinci dilim tarihsel doğrulama tabanı:
@@ -322,6 +326,22 @@ sonrasına bırakılmıştır.
   Güncel coturn tabanıyla HMAC relay probe'u 6/6 başarılıdır. Bunlar yerel amd64
   kanıtıdır; Pi `linux/arm64` scan ve iki-servis deployment kabulü değildir.
 
+2026-10-09 tarihli devir sonrası taban yenileme ve release provenance dilimi:
+
+- İlk taban koşusunda testler geçti, fakat `npm audit` 6 yeni bulgu verdi
+  (`proxy-addr`, `shell-quote`/`concurrently`, `source-map-js`, `vitest`). Hepsi
+  bildirilen semver aralıkları içinde lockfile'da yükseltildi; `security:audit`
+  npm ve dört .NET projede 0 açık verdi.
+- Toplu `npm test` 233 başarılı + 1 ortam testi atlandı; lint, build, native 42
+  başarılı + 1 atlanan ve desktop 106/106 geçti.
+- Yerel Docker Desktop `linux/amd64` container kapısı yeni lockfile ile üç hedefte
+  HIGH/CRITICAL `0` verdi; manifest SHA-256
+  `0C82A7B08C7BC21A88B1A85E727EBC2AF87129C35A537C6605A80DAEF003CB55`.
+- Release kimliği/anti-rollback/build provenance kapısı eklendi; Windows release
+  politika/katalog testleri 111/111 geçti. Gerçek publish adayı kimliği
+  `docs/DEVELOPMENT.md` dosyasındadır; aday `NotSigned` ve kirli ağaçtan geliştirme
+  build'idir, production kabulü değildir.
+
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
 ## 6. Bilinen sınırlar
@@ -335,7 +355,8 @@ Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 - Kilit ekranı, UAC secure desktop ve Session 0 yakalanmıyor; bunları güvenlik
   önlemlerini aşarak çözmeye çalışma.
 - Installer, gerçek code signing sertifikası/imzalı production artifact ve
-  otomatik güncelleme yok; imzalama/katalog kapısı kod ve politika olarak hazırdır.
+  otomatik güncelleme yok; imzalama/katalog ve anti-rollback/build provenance
+  kapısı kod ve politika olarak hazırdır.
 - Wire v3/minimum sürüm kapısı tamamlandı; gelecekteki v4 capability ve geriye
   uyumluluk/iki aşamalı rollout politikası henüz tamamlanmadı.
 - Daha geniş uzak ağ, uzun süreli soak ve farklı GPU sürücü matrisi henüz
@@ -566,7 +587,7 @@ uygulanmamak üzere Faz 4 sonrasına ve post-V1'e bırakılmış ürün kararlar
 
 Amaç: İnternete açık self-hosted kullanım için kabul edilebilir saldırı yüzeyi.
 
-Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-09-02):
+Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-10-09):
 
 - `docs/THREAT_MODEL.md` altında varlıklar, veri sınıfları, güven sınırları ve kod
   brute force, takeover, replay, yetkisiz input, TURN abuse, downgrade, hassas log,
@@ -659,7 +680,18 @@ Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-09-02):
   v2 dosyasında kapsar. EXE ve katalog için aynı exact signer, timestamp,
   Authenticode `Valid`, `signtool /pa /all /v /tw` ve
   `Test-FileCatalog=Valid/SHA256` zorunludur. Store/HSM modeli kullanılır;
-  PFX/parola reddedilir. Yerel politika/katalog testleri 31/31 geçmiştir.
+  PFX/parola reddedilir.
+- 2026-10-09: `desktop:publish` release kimliğini EXE sürüm kaynağına gömer
+  (`ProductVersion` `<sürüm>+<commit>[.dirty]`, `FileVersion`
+  `<sürüm>.<EDIZ_REMOTE_RELEASE_SEQUENCE>`); publish sırasında kaynak değişirse EXE
+  bırakılmaz. Manifest strict şema v2 bu kimliği taşır. `sign` imza öncesi temiz
+  ağaç, `HEAD` = gömülü commit, `package.json` sürümü, sequence ≥ 1 ve güvenilir
+  `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanını; `verify` manifest/EXE kimlik
+  eşliğini, temiz kaynağı ve tabanı zorunlu tutar. Yerel politika/katalog testleri
+  gerçek PE fixture'larıyla 111/111 geçmiştir.
+- 2026-10-09: yeni npm duyuruları sonrası `proxy-addr` 2.0.8, `shell-quote` 1.12.0,
+  `source-map-js` 1.2.2 ve `vitest` 4.1.11 lockfile yükseltmeleri; npm/NuGet 0 açık
+  ve yerel amd64 container kapısı yeniden 3/3 hedefte 0 bulgu.
 
 Faz 4 tamamlanmadı. Güncel dilim ve açık riskler `docs/PHASE4_PLAN.md`, tehdit
 kaydı `docs/THREAT_MODEL.md` altındadır.
@@ -673,7 +705,8 @@ Kalan yapılacaklar:
   audit volume ve iki health sonucunu kapsayan deploy smoke kanıtını kaydet.
 - Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog imzasını ve RFC3161
   timestamp'i üret; temiz Windows 10/11 doğrulamasını kaydet. Mevcut artifact
-  hâlâ `NotSigned`dır; anti-rollback/build provenance politikası da açıktır.
+  hâlâ `NotSigned`dır. Anti-rollback/build provenance kapısı hazırdır; ilk imzalı
+  yayın temiz klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
 
 Kabul kriterleri:
 
@@ -879,8 +912,9 @@ proxy/strict-payload, global/IP/socket/member kaynak kotası ve negotiation/
 DataChannel yetkilendirme dilimleri; yerel ICE nesil bağı, native pre-offer taşma
 yarışı, recovery-kalıcı fatal/input korumaları, ortak güvenli probe çıktısı ve
 minimal signaling audit'i tamamlandı. Container image digest'i, HIGH/CRITICAL
-tarama/SBOM ve Windows EXE+katalog imzalama kapıları da kod ve politika olarak
-tamamlandı; yerel `linux/amd64` kapısı üç hedefte gerçek 0 bulguyla geçti.
+tarama/SBOM, Windows EXE+katalog imzalama ve release kimliği/anti-rollback/build
+provenance kapıları da kod ve politika olarak tamamlandı; yerel `linux/amd64`
+kapısı 2026-10-09'da üç hedefte yeniden gerçek 0 bulguyla geçti.
 Sıradaki iş Pi `linux/arm64` üzerinde gerçek sıfır
 bulgulu container scan/deploy smoke kanıtı ile gerçek store/HSM sertifikalı
 EXE+katalog/RFC3161 imza ve temiz Windows 10/11 doğrulamasıdır. Başlamadan

@@ -208,6 +208,28 @@ if (-not (Test-Path -LiteralPath $localDotnet)) {
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 $env:NUGET_PACKAGES = Join-Path $root '.tools\nuget'
 
+# Release kimliği web build'inden önce yakalanır ve EXE sürüm kaynağına gömülür:
+# ProductVersion `<sürüm>+<commit>` (kirli ağaçta `.dirty`), FileVersion
+# `<sürüm>.<EDIZ_REMOTE_RELEASE_SEQUENCE>`. Sequence verilmezse 0'dır ve paket
+# release kapısından geçemez.
+$publishIdentityProperties = @()
+$publishSourceState = $null
+if ($Command -eq 'publish') {
+    Import-Module (Join-Path $PSScriptRoot 'windows-release-lib.psm1') -Force
+    try {
+        $publishSequence = Get-WindowsPublishReleaseSequence
+        $publishVersion = Get-WindowsReleasePackageVersion -RepositoryRoot $root
+        $publishSourceState = Get-WindowsReleaseSourceState -RepositoryRoot $root
+        $publishIdentityProperties = Get-WindowsPublishIdentityProperties `
+            -Version $publishVersion `
+            -Sequence $publishSequence `
+            -SourceState $publishSourceState
+    }
+    catch {
+        throw "Release kimliği hazırlanamadı: $($_.Exception.Message)"
+    }
+}
+
 Push-Location $root
 try {
     npm run build --workspace '@ediz-remote/web'
@@ -236,16 +258,48 @@ try {
         }
         'publish' {
             $publishDirectory = Join-Path $root 'artifacts\windows-desktop\win-x64'
+            if (Test-Path -LiteralPath $publishDirectory -PathType Container) {
+                # Eski EXE'yi tarif eden manifest yeni pakette bayat kalmamalı.
+                $staleManifest = Get-SafePublishChildPath `
+                    -PublishDirectory $publishDirectory `
+                    -ChildName 'EdizRemote.release-manifest.json'
+                if (Test-Path -LiteralPath $staleManifest -PathType Leaf) {
+                    Remove-Item -LiteralPath $staleManifest -Force
+                }
+            }
             & $localDotnet publish $desktopProject -c Release -r win-x64 `
                 --self-contained true -p:PublishSingleFile=true `
-                -p:IncludeNativeLibrariesForSelfExtract=true -o $publishDirectory
+                -p:IncludeNativeLibrariesForSelfExtract=true `
+                @publishIdentityProperties -o $publishDirectory
             if ($LASTEXITCODE -eq 0) {
                 Copy-WebPackageDeterministically `
                     -SourceWebRoot $webDist -PublishDirectory $publishDirectory
                 Copy-Item -LiteralPath $desktopSettings `
                     -Destination (Join-Path $publishDirectory 'ediz-remote.settings.json') `
                     -Force
+
+                # Build sırasında commit/ağaç değiştiyse gömülü kimlik kaynağı
+                # doğru anlatmaz; EXE bırakılmaz.
+                $sourceAfterPublish = Get-WindowsReleaseSourceState -RepositoryRoot $root
+                if (-not [string]::Equals(
+                        $sourceAfterPublish.Revision,
+                        $publishSourceState.Revision,
+                        [StringComparison]::Ordinal) -or
+                    $sourceAfterPublish.Clean -ne $publishSourceState.Clean) {
+                    Remove-Item -LiteralPath (Get-SafePublishChildPath `
+                            -PublishDirectory $publishDirectory `
+                            -ChildName 'EdizRemote.exe') -Force
+                    throw 'Kaynak ağacı publish sırasında değişti; paket bırakılmadı.'
+                }
+
                 Write-Host "Windows masaüstü paketi: $publishDirectory"
+                $treeState = 'temiz'
+                if (-not $publishSourceState.Clean) { $treeState = 'kirli' }
+                Write-Host ("Release kimliği: sürüm {0}, sequence {1}, commit {2}, ağaç {3}" -f
+                    $publishVersion,
+                    $publishSequence,
+                    $publishSourceState.Revision,
+                    $treeState)
             }
         }
     }

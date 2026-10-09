@@ -213,7 +213,12 @@ Self-contained paket `artifacts/windows-desktop/win-x64` altına yazılır. Ana
 çalıştırılabilir dosya `EdizRemote.exe`dir; .NET kurulumu gerekmez. Hedef Windows
 makinesinde Microsoft Edge WebView2 Runtime bulunmalıdır.
 Üretim imzası, signer allowlist'i ve fail-closed doğrulama akışı
-`docs/WINDOWS_RELEASE.md` dosyasında tanımlıdır.
+`docs/WINDOWS_RELEASE.md` dosyasında tanımlıdır. Publish, release kimliğini
+(`ProductVersion` `<sürüm>+<commit>[.dirty]`, `FileVersion` `<sürüm>.<sequence>`)
+EXE sürüm kaynağına gömer ve önceki EXE'yi tarif eden release manifestini siler.
+Publish edilen uygulamanın köprüye bildirdiği sürüm bu nedenle `package.json`
+sürümüdür; `desktop:build`/`desktop:run` çıktısı kimlik gömmez ve SDK varsayılanı
+`1.0.0`'ı bildirir.
 
 ## Publish bütünlüğü ve final fiziksel probe
 

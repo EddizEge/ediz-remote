@@ -37,8 +37,30 @@ $script:ReleaseErrorCodes = @(
     'timestamp_url_invalid',
     'certificate_store_invalid',
     'signing_failed',
+    'release_identity_invalid',
+    'release_identity_mismatch',
+    'release_version_mismatch',
+    'release_sequence_invalid',
+    'release_floor_missing',
+    'release_floor_invalid',
+    'release_rollback_rejected',
+    'provenance_dirty_source',
+    'provenance_revision_mismatch',
+    'source_state_unavailable',
     'internal_error'
 )
+
+# Release kimliği EXE'nin kendi sürüm kaynağından okunur: ProductVersion
+# `<major.minor.patch>+<40 hex git commit>` (kirli ağaçta `.dirty` eki),
+# FileVersion `<major.minor.patch>.<release sequence>`. Sequence monoton artan
+# anti-rollback sayacıdır; 0 yalnız geliştirme paketidir ve yayınlanamaz.
+$script:ReleaseSourceRepository = 'https://github.com/EddizEge/ediz-remote'
+$script:ReleaseVersionPattern =
+    '\A(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\z'
+$script:ReleaseSequencePattern = '\A(0|[1-9][0-9]{0,4})\z'
+$script:ReleaseRevisionPattern = '\A[0-9a-f]{40}\z'
+$script:ReleaseMaximumVersionPart = 65534
+$script:ReleaseMaximumSequence = 65535
 
 function Throw-ReleaseError {
     param(
@@ -436,6 +458,336 @@ function Test-IsIntegralJsonNumber {
         $Value -is [uint64]
 }
 
+function ConvertTo-WindowsReleaseVersion {
+    param(
+        [AllowNull()]
+        [object]$Value
+    )
+
+    if ($Value -isnot [string] -or
+        $Value -cnotmatch $script:ReleaseVersionPattern) {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+    foreach ($part in $Value.Split('.')) {
+        if ([int]$part -gt $script:ReleaseMaximumVersionPart) {
+            Throw-ReleaseError 'release_identity_invalid'
+        }
+    }
+    return [string]$Value
+}
+
+function ConvertTo-WindowsReleaseSequence {
+    param(
+        [AllowNull()]
+        [object]$Value,
+
+        [switch]$AllowDevelopment
+    )
+
+    if (Test-IsIntegralJsonNumber $Value) {
+        $text = ([int64]$Value).ToString(
+            [Globalization.CultureInfo]::InvariantCulture)
+    }
+    elseif ($Value -is [string]) {
+        $text = $Value
+    }
+    else {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+    if ($text -cnotmatch $script:ReleaseSequencePattern) {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+    $sequence = [int]$text
+    if ($sequence -gt $script:ReleaseMaximumSequence -or
+        (-not $AllowDevelopment -and $sequence -lt 1)) {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+    return $sequence
+}
+
+function Get-WindowsReleaseIdentityFacts {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactPath
+    )
+
+    $artifactFullPath = Assert-ArtifactPath -ArtifactPath $ArtifactPath
+    try {
+        $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($artifactFullPath)
+    }
+    catch {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+    return [PSCustomObject]@{
+        ProductVersion = [string]$info.ProductVersion
+        FileVersion = [string]$info.FileVersion
+        FileMajorPart = [int]$info.FileMajorPart
+        FileMinorPart = [int]$info.FileMinorPart
+        FileBuildPart = [int]$info.FileBuildPart
+        FilePrivatePart = [int]$info.FilePrivatePart
+    }
+}
+
+function ConvertTo-WindowsReleaseIdentity {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Facts
+    )
+
+    $productMatch = [regex]::Match(
+        [string]$Facts.ProductVersion,
+        '\A(?<version>[0-9.]{5,17})\+(?<revision>[0-9a-f]{40})(?<dirty>\.dirty)?\z')
+    if (-not $productMatch.Success) {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+    $version = ConvertTo-WindowsReleaseVersion `
+        -Value $productMatch.Groups['version'].Value
+
+    $fileVersion = [string]$Facts.FileVersion
+    $fileVersionPrefix = $version + '.'
+    if (-not $fileVersion.StartsWith(
+            $fileVersionPrefix,
+            [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+    try {
+        $sequence = ConvertTo-WindowsReleaseSequence `
+            -Value $fileVersion.Substring($fileVersionPrefix.Length) `
+            -AllowDevelopment
+    }
+    catch {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+
+    # Metin sürüm alanları ile VS_FIXEDFILEINFO sayısal alanları aynı kimliği
+    # söylemiyorsa kaynak elle değiştirilmiş kabul edilir.
+    $parts = $version.Split('.')
+    if ([int]$Facts.FileMajorPart -ne [int]$parts[0] -or
+        [int]$Facts.FileMinorPart -ne [int]$parts[1] -or
+        [int]$Facts.FileBuildPart -ne [int]$parts[2] -or
+        [int]$Facts.FilePrivatePart -ne $sequence) {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+
+    return [PSCustomObject]@{
+        Version = $version
+        Sequence = $sequence
+        SourceRevision = $productMatch.Groups['revision'].Value
+        SourceTreeClean = -not $productMatch.Groups['dirty'].Success
+    }
+}
+
+function Get-WindowsReleaseMinimumSequence {
+    param(
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment
+    )
+
+    $value = Get-EnvironmentSetting `
+        -Name 'EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE' `
+        -Environment $Environment
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        Throw-ReleaseError 'release_floor_missing'
+    }
+    try {
+        return ConvertTo-WindowsReleaseSequence -Value $value.Trim()
+    }
+    catch {
+        Throw-ReleaseError 'release_floor_invalid'
+    }
+}
+
+function Get-WindowsPublishReleaseSequence {
+    param(
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment
+    )
+
+    $value = Get-EnvironmentSetting `
+        -Name 'EDIZ_REMOTE_RELEASE_SEQUENCE' `
+        -Environment $Environment
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return 0
+    }
+    return ConvertTo-WindowsReleaseSequence `
+        -Value $value.Trim() `
+        -AllowDevelopment
+}
+
+function Get-WindowsReleasePackageVersion {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    try {
+        $packagePath = Join-Path `
+            ([IO.Path]::GetFullPath($RepositoryRoot)) `
+            'package.json'
+        $package = [IO.File]::ReadAllText(
+            $packagePath,
+            [Text.UTF8Encoding]::new($false, $true)) | ConvertFrom-Json
+        $version = $package.version
+    }
+    catch {
+        Throw-ReleaseError 'release_identity_invalid'
+    }
+    return ConvertTo-WindowsReleaseVersion -Value $version
+}
+
+function Get-WindowsReleaseSourceState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
+    )
+
+    # Windows PowerShell 5.1'de native stderr satırı Stop tercihinde terminating
+    # hataya dönüşebilir; karar yalnız git çıkış koduna ve çıktısına dayanır.
+    $ErrorActionPreference = 'Continue'
+    try {
+        $repositoryFullPath = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar)
+        $topLevelOutput = @(& git -C $repositoryFullPath `
+                rev-parse --show-toplevel 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $topLevelOutput.Count -ne 1) {
+            Throw-ReleaseError 'source_state_unavailable'
+        }
+        $topLevel = [IO.Path]::GetFullPath(([string]$topLevelOutput[0]).Trim()).TrimEnd(
+            [IO.Path]::DirectorySeparatorChar,
+            [IO.Path]::AltDirectorySeparatorChar)
+        if (-not [string]::Equals(
+                $topLevel,
+                $repositoryFullPath,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            Throw-ReleaseError 'source_state_unavailable'
+        }
+
+        $revisionOutput = @(& git -C $repositoryFullPath `
+                rev-parse --verify --quiet 'HEAD^{commit}' 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $revisionOutput.Count -ne 1) {
+            Throw-ReleaseError 'source_state_unavailable'
+        }
+        $revision = ([string]$revisionOutput[0]).Trim()
+        if ($revision -cnotmatch $script:ReleaseRevisionPattern) {
+            Throw-ReleaseError 'source_state_unavailable'
+        }
+
+        # İzlenmeyen dosyalar da build girdisi olabilir (SDK glob, web import);
+        # gitignore dışındaki her değişiklik ağacı kirli yapar.
+        $statusOutput = @(& git -C $repositoryFullPath --no-optional-locks `
+                status --porcelain=v1 --untracked-files=all `
+                --ignore-submodules=none 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            Throw-ReleaseError 'source_state_unavailable'
+        }
+        $changes = @($statusOutput | Where-Object {
+                -not [string]::IsNullOrWhiteSpace([string]$_)
+            })
+    }
+    catch {
+        Throw-ReleaseError 'source_state_unavailable'
+    }
+    return [PSCustomObject]@{
+        Revision = $revision
+        Clean = $changes.Count -eq 0
+    }
+}
+
+function Get-WindowsPublishIdentityProperties {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+
+        [Parameter(Mandatory = $true)]
+        [object]$Sequence,
+
+        [Parameter(Mandatory = $true)]
+        [object]$SourceState
+    )
+
+    $releaseVersion = ConvertTo-WindowsReleaseVersion -Value $Version
+    $releaseSequence = ConvertTo-WindowsReleaseSequence `
+        -Value $Sequence `
+        -AllowDevelopment
+    $revision = [string]$SourceState.Revision
+    if ($revision -cnotmatch $script:ReleaseRevisionPattern) {
+        Throw-ReleaseError 'source_state_unavailable'
+    }
+    $metadata = $revision
+    if (-not [bool]$SourceState.Clean) {
+        $metadata += '.dirty'
+    }
+    return [string[]]@(
+        "-p:Version=$releaseVersion",
+        "-p:AssemblyVersion=$releaseVersion.0",
+        "-p:FileVersion=$releaseVersion.$releaseSequence",
+        "-p:InformationalVersion=$releaseVersion+$metadata",
+        '-p:IncludeSourceRevisionInInformationalVersion=false'
+    )
+}
+
+function Assert-WindowsReleaseSourceState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Identity,
+
+        [Parameter(Mandatory = $true)]
+        [object]$SourceState,
+
+        [Parameter(Mandatory = $true)]
+        [string]$PackageVersion
+    )
+
+    if (-not [bool]$Identity.SourceTreeClean -or
+        -not [bool]$SourceState.Clean) {
+        Throw-ReleaseError 'provenance_dirty_source'
+    }
+    if ([string]$SourceState.Revision -cnotmatch $script:ReleaseRevisionPattern -or
+        -not [string]::Equals(
+            [string]$SourceState.Revision,
+            [string]$Identity.SourceRevision,
+            [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'provenance_revision_mismatch'
+    }
+    if (-not [string]::Equals(
+            $PackageVersion,
+            [string]$Identity.Version,
+            [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'release_version_mismatch'
+    }
+    if ([int]$Identity.Sequence -lt 1) {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+}
+
+function Assert-WindowsReleaseSigningProvenance {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot,
+
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment
+    )
+
+    $minimumSequence = Get-WindowsReleaseMinimumSequence -Environment $Environment
+    $identity = ConvertTo-WindowsReleaseIdentity `
+        -Facts (Get-WindowsReleaseIdentityFacts -ArtifactPath $ArtifactPath)
+    $sourceState = Get-WindowsReleaseSourceState -RepositoryRoot $RepositoryRoot
+    $packageVersion = Get-WindowsReleasePackageVersion -RepositoryRoot $RepositoryRoot
+    Assert-WindowsReleaseSourceState `
+        -Identity $identity `
+        -SourceState $sourceState `
+        -PackageVersion $packageVersion
+    if ($identity.Sequence -lt $minimumSequence) {
+        Throw-ReleaseError 'release_rollback_rejected'
+    }
+    return $identity
+}
+
 function Assert-WindowsReleaseManifestObject {
     param(
         [Parameter(Mandatory = $true)]
@@ -446,7 +798,18 @@ function Assert-WindowsReleaseManifestObject {
         'schemaVersion',
         'product',
         'buildId',
+        'release',
+        'provenance',
         'artifact'
+    )
+    Assert-ExactProperties -Value $Manifest.release -Expected @(
+        'version',
+        'sequence'
+    )
+    Assert-ExactProperties -Value $Manifest.provenance -Expected @(
+        'sourceRepository',
+        'sourceRevision',
+        'sourceTreeClean'
     )
     Assert-ExactProperties -Value $Manifest.artifact -Expected @(
         'fileName',
@@ -455,7 +818,7 @@ function Assert-WindowsReleaseManifestObject {
     )
 
     if (-not (Test-IsIntegralJsonNumber $Manifest.schemaVersion) -or
-        [int64]$Manifest.schemaVersion -ne 1 -or
+        [int64]$Manifest.schemaVersion -ne 2 -or
         $Manifest.product -isnot [string] -or
         -not [string]::Equals(
             $Manifest.product,
@@ -464,6 +827,30 @@ function Assert-WindowsReleaseManifestObject {
         $Manifest.buildId -isnot [string] -or
         $Manifest.buildId -notmatch '\A[A-Za-z0-9][A-Za-z0-9._@+:-]{0,127}\z') {
         Throw-ReleaseError 'manifest_build_invalid'
+    }
+
+    try {
+        ConvertTo-WindowsReleaseVersion -Value $Manifest.release.version | Out-Null
+        if (-not (Test-IsIntegralJsonNumber $Manifest.release.sequence)) {
+            Throw-ReleaseError 'release_sequence_invalid'
+        }
+        ConvertTo-WindowsReleaseSequence `
+            -Value $Manifest.release.sequence `
+            -AllowDevelopment | Out-Null
+    }
+    catch {
+        Throw-ReleaseError 'manifest_schema_invalid'
+    }
+    if ($Manifest.provenance.sourceRepository -isnot [string] -or
+        -not [string]::Equals(
+            $Manifest.provenance.sourceRepository,
+            $script:ReleaseSourceRepository,
+            [StringComparison]::Ordinal) -or
+        $Manifest.provenance.sourceRevision -isnot [string] -or
+        $Manifest.provenance.sourceRevision -cnotmatch
+            $script:ReleaseRevisionPattern -or
+        $Manifest.provenance.sourceTreeClean -isnot [bool]) {
+        Throw-ReleaseError 'manifest_schema_invalid'
     }
 
     if ($Manifest.artifact.fileName -isnot [string] -or
@@ -495,11 +882,22 @@ function Write-WindowsReleaseManifest {
     $manifestFullPath = Assert-ManifestPath `
         -ArtifactFullPath $artifactFullPath `
         -ManifestPath $ManifestPath
+    $identity = ConvertTo-WindowsReleaseIdentity `
+        -Facts (Get-WindowsReleaseIdentityFacts -ArtifactPath $artifactFullPath)
     $artifact = Get-Item -LiteralPath $artifactFullPath -Force
     $manifest = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         product = 'Ediz Remote'
         buildId = $BuildId
+        release = [ordered]@{
+            version = $identity.Version
+            sequence = [int]$identity.Sequence
+        }
+        provenance = [ordered]@{
+            sourceRepository = $script:ReleaseSourceRepository
+            sourceRevision = $identity.SourceRevision
+            sourceTreeClean = [bool]$identity.SourceTreeClean
+        }
         artifact = [ordered]@{
             fileName = 'EdizRemote.exe'
             sizeBytes = [int64]$artifact.Length
@@ -604,6 +1002,57 @@ function Assert-WindowsArtifactMatchesManifest {
             [string]$Manifest.artifact.sha256,
             [StringComparison]::Ordinal)) {
         Throw-ReleaseError 'artifact_hash_mismatch'
+    }
+}
+
+function Assert-WindowsReleaseIdentityMatchesManifest {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Identity,
+
+        [Parameter(Mandatory = $true)]
+        [object]$Manifest
+    )
+
+    Assert-WindowsReleaseManifestObject -Manifest $Manifest
+    if (-not [string]::Equals(
+            [string]$Identity.Version,
+            [string]$Manifest.release.version,
+            [StringComparison]::Ordinal) -or
+        [int64]$Identity.Sequence -ne [int64]$Manifest.release.sequence -or
+        -not [string]::Equals(
+            [string]$Identity.SourceRevision,
+            [string]$Manifest.provenance.sourceRevision,
+            [StringComparison]::Ordinal) -or
+        [bool]$Identity.SourceTreeClean -ne
+            [bool]$Manifest.provenance.sourceTreeClean) {
+        Throw-ReleaseError 'release_identity_mismatch'
+    }
+}
+
+function Assert-WindowsReleaseAntiRollbackPolicy {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Manifest,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MinimumSequence
+    )
+
+    Assert-WindowsReleaseManifestObject -Manifest $Manifest
+    if ($MinimumSequence -lt 1 -or
+        $MinimumSequence -gt $script:ReleaseMaximumSequence) {
+        Throw-ReleaseError 'release_floor_invalid'
+    }
+    if (-not [bool]$Manifest.provenance.sourceTreeClean) {
+        Throw-ReleaseError 'provenance_dirty_source'
+    }
+    $sequence = [int64]$Manifest.release.sequence
+    if ($sequence -lt 1) {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+    if ($sequence -lt $MinimumSequence) {
+        Throw-ReleaseError 'release_rollback_rejected'
     }
 }
 
@@ -1246,6 +1695,14 @@ function Invoke-WindowsReleaseGate {
         Assert-WindowsArtifactMatchesManifest `
             -ArtifactPath $artifactFullPath `
             -Manifest $manifest
+        $identity = ConvertTo-WindowsReleaseIdentity `
+            -Facts (Get-WindowsReleaseIdentityFacts -ArtifactPath $artifactFullPath)
+        Assert-WindowsReleaseIdentityMatchesManifest `
+            -Identity $identity `
+            -Manifest $manifest
+        Assert-WindowsReleaseAntiRollbackPolicy `
+            -Manifest $manifest `
+            -MinimumSequence (Get-WindowsReleaseMinimumSequence -Environment $Environment)
 
         $artifactFacts = Get-WindowsAuthenticodeFacts `
             -ArtifactPath $artifactFullPath
@@ -1292,6 +1749,19 @@ function Invoke-WindowsReleaseGate {
 
 Export-ModuleMember -Function @(
     'Get-WindowsReleaseErrorCode',
+    'ConvertTo-WindowsReleaseVersion',
+    'ConvertTo-WindowsReleaseSequence',
+    'Get-WindowsReleaseIdentityFacts',
+    'ConvertTo-WindowsReleaseIdentity',
+    'Get-WindowsReleaseMinimumSequence',
+    'Get-WindowsPublishReleaseSequence',
+    'Get-WindowsReleasePackageVersion',
+    'Get-WindowsReleaseSourceState',
+    'Get-WindowsPublishIdentityProperties',
+    'Assert-WindowsReleaseSourceState',
+    'Assert-WindowsReleaseSigningProvenance',
+    'Assert-WindowsReleaseIdentityMatchesManifest',
+    'Assert-WindowsReleaseAntiRollbackPolicy',
     'Write-WindowsReleaseManifest',
     'Read-WindowsReleaseManifest',
     'Assert-WindowsReleaseManifestObject',

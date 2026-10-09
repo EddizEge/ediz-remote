@@ -1,7 +1,7 @@
 # Ediz Remote tehdit modeli
 
 Durum: Faz 4 yaşayan güvenlik belgesi  
-Son güncelleme: 2026-09-02  
+Son güncelleme: 2026-10-09  
 Kapsam sürümü: signaling wire v3
 
 Bu belge internetten erişilen self-hosted Ediz Remote kurulumunun güven sınırlarını,
@@ -113,8 +113,8 @@ tamamlanır.
 | ER-T09 | Sahte proxy başlığıyla IP limitini aşma | `CF-Connecting-IP` varsayılan olarak yok sayılır; explicit trust ve geçerli IP gerekir; Compose portu loopback | Production ağ/topoloji testi; yanlış trust ayarını startup/health durumunda görünür kılma | Yüksek / Kısmi |
 | ER-T10 | TURN credential/relay kötüye kullanımı | Onay sonrası istemciye özel HMAC credential, 60–86400 sn TTL, secret istemciye verilmez, coturn limitleri, global+kalıcı member `refresh_ice` kovası | Eşzamanlı allocation/kapasite alarmı ve secret rotation prosedürü | Orta / Kısmi |
 | ER-T11 | Token, SDP, ICE, kod veya exception'ın log/audit'e sızması | Signaling ve native hata çıktıları sabit kod/allowlist kullanır; TURN/browser probe'ları ortak bounded redaction sınırındadır; strict sekiz alanlı JSONL audit günlük HMAC pseudonym, kısa retention ve private/no-symlink dosya koruması uygular; signaling TURN/audit secret loader'ları environment yerine bounded, no-follow, current-UID/private-mode ve tek-link doğrulamalı dosya kullanır; coturn entrypoint'i type/symlink/owner/mode/size kontrol eder ve production config raw stdout'u discard eder; sentinel testleri vardır | Canlı production stdout/stderr capture, gelecekteki destek paketi testi ve erişim/rotasyon operasyon kanıtı | Yüksek / Kısmi |
-| ER-T12 | Zararlı/güvensiz dependency veya container | npm lockfile, SIPSorcery 10.0.16, güvenli transitive override'lar, `qs` 6.16.0 ve bulguda duran `npm run security:audit`; Node 22.23.2/Alpine 3.24, coturn 4.17.0/Alpine ve Trivy multi-arch digest kilidi; hardened Node/application/custom-coturn için build-once immutable image ID, arşiv config SHA bağı, CycloneDX+SPDX native ID doğrulaması, güncel Trivy DB, HIGH/CRITICAL fail gate, hash bağlı şema v3 manifest ve `--pull never`/`--no-build` deployment tüketicisi; gerçek yerel amd64 taramasında 3/3 hedef 0 bulgu | Pi `linux/arm64` gerçek scan/deploy kanıtı, image provenance/imzası ve güvenli digest yenileme operasyonu | Yüksek / Kısmi |
-| ER-T13 | İmzasız Windows EXE veya yayın ağacının değiştirilmesi | Store/HSM-only model ve PFX/parola reddi; EXE sonrası strict SHA-256 manifest; manifest dahil tüm `win-x64` ağacını kapsayan dış SHA-256 Catalog v2; EXE+katalog için Authenticode `Valid`, exact signer, timestamp ve `signtool /pa /all /v /tw`; `Test-FileCatalog=Valid/SHA256`; bounded/reparse/TOCTOU kontrolleri | Gerçek OV/EV sertifika ve RFC3161 imzası, temiz Windows 10/11 doğrulaması, anti-rollback/build provenance; mevcut aday `NotSigned` | Yüksek / Açık |
+| ER-T12 | Zararlı/güvensiz dependency veya container | npm lockfile, SIPSorcery 10.0.16, güvenli transitive override'lar, `qs` 6.16.0, 2026-10-09 `proxy-addr` 2.0.8/`shell-quote` 1.12.0/`source-map-js` 1.2.2/`vitest` 4.1.11 yükseltmeleri ve bulguda duran `npm run security:audit`; Node 22.23.2/Alpine 3.24, coturn 4.17.0/Alpine ve Trivy multi-arch digest kilidi; hardened Node/application/custom-coturn için build-once immutable image ID, arşiv config SHA bağı, CycloneDX+SPDX native ID doğrulaması, güncel Trivy DB, HIGH/CRITICAL fail gate, hash bağlı şema v3 manifest ve `--pull never`/`--no-build` deployment tüketicisi; gerçek yerel amd64 taramasında 3/3 hedef 0 bulgu (son koşu 2026-10-09) | Pi `linux/arm64` gerçek scan/deploy kanıtı, image provenance/imzası ve güvenli digest yenileme operasyonu | Yüksek / Kısmi |
+| ER-T13 | İmzasız Windows EXE veya yayın ağacının değiştirilmesi | Store/HSM-only model ve PFX/parola reddi; EXE sonrası strict SHA-256 manifest; manifest dahil tüm `win-x64` ağacını kapsayan dış SHA-256 Catalog v2; EXE+katalog için Authenticode `Valid`, exact signer, timestamp ve `signtool /pa /all /v /tw`; `Test-FileCatalog=Valid/SHA256`; bounded/reparse/TOCTOU kontrolleri; EXE sürüm kaynağına gömülü sürüm, commit, temiz-ağaç bayrağı ve monoton sequence; bu kimliği birebir taşıyan strict manifest v2; imza öncesi temiz kaynak, `HEAD`/sürüm eşliği ve güvenilir tabanın altındaki sequence için `release_rollback_rejected` | Gerçek OV/EV sertifika ve RFC3161 imzası, temiz Windows 10/11 doğrulaması, temiz ağaçtan sequence ≥ 1 ilk imzalı yayın ve Faz 5 güncelleyicide sequence karşılaştırması; mevcut aday `NotSigned` | Yüksek / Açık |
 | ER-T14 | UAC/lock screen/Session 0 güvenlik sınırının aşılması | Tasarım gereği yakalanmaz ve input enjekte edilmez | Davranışı regresyon testleri ve kullanıcı belgesinde koruma | Kritik / Kabul edilen sınır |
 
 ## 7. Faz 4 ilk dilim kararı
@@ -234,9 +234,11 @@ ayrıntıları `docs/SECURITY_AUDIT.md` dosyasındadır.
   production capture ile gelecekteki destek paketi doğrulaması bekliyor.**
 - Production npm/NuGet/container taraması, SBOM ve gerekçeli baseline. — npm/NuGet
   kapısı temiz, container kapı kodu ve yerel `linux/amd64` gerçek 3/3 sıfır-bulgulu
-  scan tamamlandı; Pi `linux/arm64` scan ve deployment smoke kanıtı bekliyor.
+  scan tamamlandı (2026-10-09 yenilendi); Pi `linux/arm64` scan ve deployment smoke
+  kanıtı bekliyor.
 - Authenticode imzalı Windows artifact ve bağımsız imza/hash doğrulaması. —
-  Store/HSM, EXE+katalog ve bütün ağaç doğrulama kodu ile 31/31 yerel politika
-  testi tamamlandı; gerçek imzalı EXE+katalog ve temiz makine kanıtı bekliyor.
+  Store/HSM, EXE+katalog, bütün ağaç, release kimliği ve anti-rollback/build
+  provenance kodu ile 111/111 yerel politika testi tamamlandı; gerçek imzalı
+  EXE+katalog ve temiz makine kanıtı bekliyor.
 - Cloudflare origin/proxy policy ile gerçek HTTPS/WSS deployment testi.
 - Faz 4 kabul kanıtlarının `docs/PHASE4_ACCEPTANCE.md` altında toplanması.

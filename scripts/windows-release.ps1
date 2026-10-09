@@ -90,6 +90,11 @@ try {
             Write-Host 'WINDOWS_RELEASE_GATE_OK'
         }
         'sign' {
+            # İmza/timestamp harcanmadan önce temiz kaynak, commit, sürüm ve
+            # anti-rollback tabanı doğrulanır; son gate aynı kontrolleri tekrarlar.
+            Assert-WindowsReleaseSigningProvenance `
+                -ArtifactPath $ArtifactPath `
+                -RepositoryRoot $repositoryRoot | Out-Null
             Invoke-WindowsStoreSigning -ArtifactPath $ArtifactPath
             Write-WindowsReleaseManifest `
                 -ArtifactPath $ArtifactPath `

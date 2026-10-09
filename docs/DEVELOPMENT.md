@@ -216,7 +216,10 @@ npm run release:windows:verify
 ayar ve paket bilgisi `docs/WINDOWS_DESKTOP.md` dosyasındadır.
 Production Authenticode, strict manifest ve tüm yayın ağacını kapsayan dış
 SHA-256 katalog kapısı `docs/WINDOWS_RELEASE.md` dosyasında açıklanır; imzasız
-aday bu kapıdan geçmez.
+aday bu kapıdan geçmez. `desktop:publish` kök `package.json` sürümünü, `HEAD`
+commit'ini, ağaç temizliğini ve `EDIZ_REMOTE_RELEASE_SEQUENCE` değerini (verilmezse
+`0`) EXE sürüm kaynağına gömer; kirli ağaç veya sequence `0` geliştirme paketidir
+ve release kapısı onu anti-rollback/provenance kontrolünde reddeder.
 
 2026-08-23 final Faz 3 artifact'i `184540144` bayttır; zaman damgası
 `2026-08-23 22:59:29 +03`, SHA-256 değeri

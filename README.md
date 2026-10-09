@@ -152,8 +152,8 @@ npm run security:audit
 ```
 
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
-ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-09-02 kabul tabanında
-233 npm testi, 42 native testi, 106 desktop testi ve 31 Windows release testi
+ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-09 yerel tabanında
+233 npm testi, 42 native testi, 106 desktop testi ve 111 Windows release testi
 başarılıdır; npm/native paketlerinde birer ortam testi atlanmıştır.
 Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOPMENT.md).
 
@@ -170,7 +170,8 @@ Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOP
 
 Faz 4'te kalan başlıca kabul işleri: Pi `linux/arm64` gerçek scan/deploy kanıtı,
 store/HSM sertifikalı EXE + katalog, RFC3161 timestamp ve temiz Windows 10/11
-doğrulaması. [Faz 4 planı →](docs/PHASE4_PLAN.md)
+doğrulaması. Anti-rollback ve build provenance kapısı hazırdır; ilk imzalı yayın
+temiz klondan artan release sequence ile üretilir. [Faz 4 planı →](docs/PHASE4_PLAN.md)
 
 Ses, dosya aktarımı, clipboard ve gözetimsiz erişim V1 sonrası kapsamındadır.
 UAC secure desktop, kilit ekranı, Session 0 ve `Ctrl+Alt+Del` sınırları aşılmaz.

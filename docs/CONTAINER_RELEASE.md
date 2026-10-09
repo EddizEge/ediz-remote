@@ -150,3 +150,27 @@ bitmesi ve üretilen manifest/deployment dosyasının kullanılmasıyla verilir.
 - Bu kanıt Pi `linux/arm64` sonucu değildir ve production Compose tüketicisiyle
   gerçek servis deployment'ı yapılmadı. Pi'de exact scan + secret/audit volume +
   iki health sonucu görülmeden Faz 4 container kabulü tamamlanmış sayılmaz.
+
+## 2026-10-09 yerel linux/amd64 kanıtı
+
+2026-09-02 kanıtı 48 saatlik tazelik sınırını aştığı için kapı aynı kilitli
+Node/coturn/Trivy digest'leriyle ve 2026-10-09 npm güvenlik yükseltmelerini içeren
+lockfile ile yeniden çalıştırıldı. Eski kanıtın yerini bu koşu aldı.
+
+- Docker Desktop `linux/amd64` üzerinde üç hedef build/scan edildi; HIGH/CRITICAL
+  bulgu `0`, kapı sonucu `passed`, koşu yaklaşık 231 saniye.
+- Trivy DB `updatedAt` `2026-10-09T13:10:00Z`, `downloadedAt`
+  `2026-10-09T13:51:44Z`.
+- Manifest şeması `3`, application image
+  `sha256:da42511455b3fdabb1c87db9cc22fd2159c8d5fbb483994f7908fe25977f4aa2`,
+  coturn image
+  `sha256:43b32cdf12d9ad7b8d73c2e086c106d8c28296228445b5d165d92b7d0eccada8`
+  ve manifest SHA-256
+  `0C82A7B08C7BC21A88B1A85E727EBC2AF87129C35A537C6605A80DAEF003CB55`dır.
+- Application CycloneDX kaydı `proxy-addr` 2.0.8 içerir; yalnız geliştirme
+  paketleri (`concurrently`, `shell-quote`, `vitest`, `source-map-js`) imajda yoktur.
+- Audited application image'ı ağsız, read-only, capsiz ve `no-new-privileges`
+  ile UID/GID 1000 altında Node 22.23.2 çalıştırdı; npm, npx, corepack, yarn ve
+  pnpm bulunmadı. Bu koşuda coturn health smoke'u ve HMAC relay probe'u yeniden
+  çalıştırılmadı.
+- Bu kanıt da Pi `linux/arm64` sonucu değildir; deployment yapılmadı.
