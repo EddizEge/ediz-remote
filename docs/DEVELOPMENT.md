@@ -274,6 +274,25 @@ CycloneDX/SPDX/Trivy kanıtıyla ve HIGH/CRITICAL bulgu `0` sonucu ile geçirdi.
 smoke'ları ile HMAC TURN relay probe'u 6/6 geçti. Pi `linux/arm64` scan/deploy
 kanıtı bu yerel sonuca dahil değildir.
 
+2026-10-09 devir sonrası taban yenilemesinde ilk `npm audit` 6 yeni bulgu verdi;
+`proxy-addr`, `shell-quote`/`concurrently`, `source-map-js` ve `vitest`
+bildirilen semver aralıkları içinde yükseltildi. Ardından toplu test 233 başarılı
++ 1 atlanan, native 42 başarılı + 1 atlanan, desktop 106/106, Windows release
+politika/katalog 111/111 sonucu verdi; lint, build ve npm + dört NuGet projesi
+dependency audit'i temizdir. Yerel `linux/amd64` container kapısı yeni lockfile ile
+üç hedefte HIGH/CRITICAL `0` verdi (`docs/CONTAINER_RELEASE.md`).
+
+Release kimliği gömülü ilk geliştirme adayı `184835328` bayttır; son yazım zamanı
+`2026-10-09 17:10:09 +03:00`, SHA-256 değeri
+`DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`. Sürüm
+kaynağı `ProductVersion 0.1.0+971506fb38a0ef162dee09868493e4f481767be0.dirty`,
+`FileVersion 0.1.0.0` taşır; ağaç izlenmeyen teslim dosyası nedeniyle kirlidir ve
+sequence `0`dır. Şema v2 manifest SHA-256
+`69ED2259A7F067156DB0C6306461FE4EFBEF0507B7A27403E97759B6170A8ABC` olarak
+üretildi. Source/published dörder web dosyasında fark `0`, bundle'da wire v3 var
+ve wire v2 yok. Authenticode `NotSigned`, katalog yok; `release:windows:verify`
+`catalog_missing` ile kapanır. Fiziksel EXE smoke çalıştırılmadı.
+
 ## Raspberry Pi 5 kurulumu
 
 Pi üzerinde Docker ve Docker Compose eklentisi kurulu olmalıdır.

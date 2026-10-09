@@ -260,3 +260,28 @@ doğrulaması gerekir.
   coturn HMAC relay probe'u 6/6 geçti. Bu yerel amd64 kanıtıdır; Pi `linux/arm64`
   gerçek scan, secret/audit-volume ve iki-service deploy smoke hâlâ beklenmektedir.
 - Bu doğrulamada fiziksel EXE/UI smoke çalıştırılmadı.
+
+## 2026-10-09 devir sonrası taban ve release provenance doğrulaması
+
+- İlk taban koşusu: testler geçti, `security:audit` npm'de 6 yeni bulguyla
+  (3 kritik, 1 yüksek, 2 orta) fail-closed kapandı. Lockfile yükseltmesi sonrası
+  npm ve dört NuGet projesi 0 açık.
+- Toplu test 233 başarılı + 1 atlanan (TURN 13, güvenli çıktı 10, container
+  politika 22, web 100, protocol 10, signaling 78 + 1 atlanan); native 42 + 1
+  atlanan; desktop 106/106; lint ve build başarılı.
+- Windows release politika/katalog testleri 31 → 111: gerçek `VS_VERSIONINFO`
+  taşıyan PE fixture'ları, yalıtılmış geçici git deposu, şema v2 mutasyonları,
+  imza öncesi provenance ve imzasız katalogla gate sırası.
+- Yerel Docker Desktop `linux/amd64` container kapısı yeni lockfile ile 3/3 hedefte
+  HIGH/CRITICAL `0`; manifest SHA-256
+  `0C82A7B08C7BC21A88B1A85E727EBC2AF87129C35A537C6605A80DAEF003CB55`; audited
+  application image'ı UID 1000, ağsız/read-only Node smoke'unu npm araçları olmadan
+  geçti. Coturn health ve HMAC relay probe'u bu koşuda yeniden çalıştırılmadı.
+- Geliştirme adayı `184835328` bayt, SHA-256
+  `DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`,
+  `ProductVersion 0.1.0+971506fb38a0ef162dee09868493e4f481767be0.dirty`,
+  `FileVersion 0.1.0.0`; Authenticode `NotSigned`. `verify` `catalog_missing`;
+  tabansız `sign` `release_floor_missing`, tabanlı `sign` imza denemeden
+  `provenance_dirty_source` ile kapandı.
+- Pi `linux/arm64` scan/deploy, gerçek sertifikalı imza ve temiz Windows 10/11
+  doğrulaması bu turda yapılmadı; Pi erişimi ve signing sertifikası yoktu.

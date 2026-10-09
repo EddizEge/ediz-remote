@@ -260,6 +260,21 @@ SHA-256 farkı `0`; yayınlanmış bundle wire v3 alt protokolünü içeriyor. D
 smoke bu dilimde yeniden çalıştırılmadı; bu aday imzalanmadan production release
 kabul edilmez.
 
+2026-10-09 release kimlikli geliştirme adayı:
+
+- Dosya: `artifacts/windows-desktop/win-x64/EdizRemote.exe`
+- Boyut: `184835328` bayt
+- Son yazma: `2026-10-09 17:10:09 +03:00`
+- SHA-256: `DED61FD7661EE3EFEBBCBFB3F7C2DFE18167F9B4B5DDE14F64277A4168C1D71D`
+- `ProductVersion`: `0.1.0+971506fb38a0ef162dee09868493e4f481767be0.dirty`
+- `FileVersion`: `0.1.0.0` (sequence `0`, geliştirme paketi)
+- Authenticode: `NotSigned`
+
+Source ve publish `Web` ağaçlarının dörder dosyasında fark `0`; bundle wire v3
+içeriyor, wire v2 içermiyor. Desktop 106/106 geçti. Kirli ağaç ve sequence `0`
+nedeniyle release kapısı bu adayı imza öncesinde reddeder; fiziksel EXE smoke
+çalıştırılmadı.
+
 ## Sinyalleşme ayarı
 
 Öncelik sırası:
