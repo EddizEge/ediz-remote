@@ -55,9 +55,20 @@ Windows release 111, lint/build ve `security:audit` (npm + dört NuGet 0 açık)
 geçti; yerel amd64 container kapısı yeniden 3/3 hedefte 0 bulgu verdi. Fuzz iki
 gerçek bulguyu kapattı (iç içe `__proto__`, WPF'de eşlenmemiş surrogate).
 
+### GitHub Windows yayın adayı (2026-10-11)
+
+- İlk attest edilmiş yayın: `windows-v0.1.0.1` **taslağı** (Actions run
+  `38107001498`, commit `8701f78`, sequence 1). Dağıtım birimi
+  `EdizRemote.win-x64.zip` (SHA-256 `3e995246…783b`); EXE SHA-256
+  `b1e77dc5…f516`, `ProductVersion 0.1.0+8701f78…`, `FileVersion 0.1.0.1`,
+  Authenticode **NotSigned**.
+- Ayrı makinede dört dosyanın `gh attestation verify` sonucu ve zip ağacında
+  `verify-provenance` başarılı. Temiz Windows 10/11 kanıtı yok; taslak yayımlanmadı.
+  Tam kimlikler `docs/WINDOWS_RELEASE.md` ve `docs/PHASE4_ACCEPTANCE.md`'de.
+
 ### Yerel Windows artifact'i
 
-2026-10-09 güncel geliştirme adayı (`6bdf2a5`'ten, kirli ağaç, sequence 0):
+2026-10-09 geliştirme adayı (`6bdf2a5`'ten, kirli ağaç, sequence 0):
 
 - Dosya: `artifacts/windows-desktop/win-x64/EdizRemote.exe`, `184835328` bayt.
 - SHA-256: `330D033CE3AC08C0E011E2DEEF0B477D15F71754570DB76CD091DC6E838D20E0`.
@@ -88,6 +99,17 @@ Teslim anındaki önceki aday (artık yerinde değil):
   önce build edildi.
 - Bu kanıt Pi `linux/arm64` kabulü değildir. Yerel image ID ve `deployment.env`
   farklı hosta taşınarak production kabulü verilemez.
+
+### Pi arm64 container kanıtı (2026-10-11)
+
+- Production Pi'nin yerel Docker engine'inde, public depodan temiz klonlanan
+  `219cfc9` ile `npm run security:containers`: `linux/arm64`, 3/3 hedef
+  HIGH/CRITICAL 0, `gatePassed=true`, manifest SHA-256
+  `FCC5988740E9204478C3BA5BC3FF0B3117DB1A576D7AD68FD2822022B025782B`.
+- DB updated `2026-10-11T01:13:45Z`, downloaded `2026-10-11T02:05:21Z`.
+- Yalnız build/scan yapıldı; canlı servislere dokunulmadı, **deployment yapılmadı**.
+  Deploy anında kapı yeniden çalıştırılır; secret dosyaları/`.env`/audit volume
+  hazırlığı operatör adımıdır.
 
 `artifacts/`, `.tools/`, secret dosyaları, bağımlılıklar ve build çıktıları
 GitHub'a dahil değildir. Temiz klonda bunların bulunmaması beklenir.
@@ -190,8 +212,10 @@ istediğinde çalıştır; arka plan dosya/komut çalışmasını tercih et.
 yenile; yeni bir açık çıkarsa fail-closed kapıyı gevşetmeden çöz. Sonra şu işleri
 sırayla, erişim ve gerçek kanıt bulunduğunda tamamla. Fuzz katmanı, 326 testlik
 durum makinesi matrisi ve `docs/PHASE4_ACCEPTANCE.md` 2026-10-09'da tamamlandı
-(toplu `npm test` 576 + 1 atlanan); kalan Faz 4 kabulü Pi, ilk GitHub
-`windows-release` koşusu/attestation ve temiz Windows 10/11 girdisine bağlıdır.
+(toplu `npm test` 576 + 1 atlanan). 2026-10-11'de Pi arm64 kapısı geçti ve ilk
+attest edilmiş GitHub Windows yayını (`windows-v0.1.0.1` taslağı) bağımsız
+doğrulandı; kalan Faz 4 kabulü Pi deploy smoke'u ve temiz Windows 10/11 girdisine
+bağlıdır.
 
 ### A. Pi arm64 container kabulü
 
@@ -227,10 +251,11 @@ SmartScreen uyarısı kalır (ER-T13 artık riski kabul edildi).
    kimliği/taban ve `gh attestation verify` (depo, signer workflow
    `.github/workflows/windows-release.yml`, `refs/heads/main`, commit,
    GitHub-hosted runner) ile fail-closed doğrular. Kod ve 234 politika testi hazır.
-3. Kalan: workflow'un (`windows-release`) ilk GitHub koşusu, attestation'lı adayda
-   başarılı `verify-provenance`, taslak yayın ve temiz Windows 10/11 kanıtı.
-   Bunlar olmadan kriteri karşılanmış sayma; Authenticode doğrulamasını
-   provenance manifestiyle gevşetme.
+3. İlk GitHub koşusu (2026-10-11) `windows-v0.1.0.1` taslağını attest etti;
+   CI içi ve ayrı makinedeki `verify-provenance` ile 4/4 `gh attestation verify`
+   geçti. Kalan: temiz Windows 10/11 kanıtı ve taslağın yayımlanması. Bu olmadan
+   kriteri karşılanmış sayma; Authenticode doğrulamasını provenance manifestiyle
+   gevşetme. Yeni yayın: Actions → `windows-release` → `sequence` = önceki + 1.
 
 **Authenticode yolu (sertifika gelince).**
 

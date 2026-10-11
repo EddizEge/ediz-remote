@@ -174,3 +174,28 @@ lockfile ile yeniden çalıştırıldı. Eski kanıtın yerini bu koşu aldı.
   pnpm bulunmadı. Bu koşuda coturn health smoke'u ve HMAC relay probe'u yeniden
   çalıştırılmadı.
 - Bu kanıt da Pi `linux/arm64` sonucu değildir; deployment yapılmadı.
+
+## 2026-10-11 Pi linux/arm64 kanıtı
+
+Kapı, production Pi'nin yerel Docker engine'inde (Docker 29.8.0, Compose v5.5.1)
+public depodan temiz klonlanan `219cfc9` kaynağıyla çalıştırıldı. Koşu yalnız
+build/scan yaptı; çalışan servislere dokunulmadı ve deployment yapılmadı.
+
+- Platform `linux/arm64`; üç hedef (hardened Node runtime base, final application,
+  custom coturn) build/scan edildi; HIGH/CRITICAL bulgu `0`, kapı sonucu `passed`,
+  koşu yaklaşık üç dakika.
+- Her hedef için CycloneDX, SPDX 2.3 ve Trivy JSON üretildi (application 96/97
+  bileşen kaydı, coturn 58/59, Node tabanı 21/22).
+- Trivy DB `updatedAt` `2026-10-11T01:13:45Z`, `downloadedAt`
+  `2026-10-11T02:05:21Z`; 48 saatlik tazelik sınırı nedeniyle deploy öncesi kapı
+  yeniden çalıştırılır.
+- Manifest şeması `3`, application image
+  `sha256:48f0054668ad4434a6225f0045f4a18d5c43ec0664bcb79655ee1bdd8a5f5a8a`,
+  coturn image
+  `sha256:730f47e0a229abf144deb75dafb39bb6252ece95e3e43c8c5368bd757cdb0a59`
+  ve manifest SHA-256
+  `FCC5988740E9204478C3BA5BC3FF0B3117DB1A576D7AD68FD2822022B025782B`dır.
+- Kalan Faz 4 container kabulü: UID 1000 secret dosyaları ve audit volume ile
+  `security:container:deploy` tüketicisinden geçen iki servisli deployment,
+  application/coturn health, canlı coturn stdout suppression ve audit
+  503/restart davranışının kaydı.

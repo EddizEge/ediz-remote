@@ -372,8 +372,10 @@ sonrasına bırakılmıştır.
   `npm test` 576 + 1 atlanan, lint temiz.
 - Yerel temiz ağaç `3091505`, sequence 1 adayında `provenance` OK;
   `verify-provenance` yerel attestation olmadığı için beklenen
-  `provenance_attestation_invalid`. İlk GitHub koşusu ve temiz Windows 10/11
-  kanıtı bekliyor.
+  `provenance_attestation_invalid`. İlk GitHub koşusu (run `38107001498`,
+  `8701f78`, sequence 1) `windows-v0.1.0.1` taslağını attest etti; ayrı makinede
+  4/4 `gh attestation verify` ve zip ağacında `verify-provenance` geçti. Temiz
+  Windows 10/11 kanıtı bekliyor.
 
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
@@ -755,12 +757,13 @@ Kalan yapılacaklar:
 
 - Pi production audit secret/volume erişimini, runtime 503/restart davranışını ve
   canlı coturn stdout suppression'ını deployment kabulünde doğrula.
-- Pi `linux/arm64` üzerinde gerçek `security:containers` kapısını sıfır bulguyla
-  geçir; doğrulanmış immutable application/coturn image'larıyla UID 1000 secret,
-  audit volume ve iki health sonucunu kapsayan deploy smoke kanıtını kaydet.
-- `windows-release` workflow'unun ilk GitHub koşusunda attest edilmiş adayı
-  `release:windows:verify-provenance` ile doğrula; taslak yayını ve temiz Windows
-  10/11 doğrulamasını (SmartScreen davranışı dahil) kaydet. Sertifika gelince
+- Pi `linux/arm64` gerçek `security:containers` kapısı 2026-10-11'de 3/3 hedef
+  sıfır bulguyla geçti; deploy anında kapıyı tazeleyip doğrulanmış immutable
+  application/coturn image'larıyla UID 1000 secret, audit volume ve iki health
+  sonucunu kapsayan deploy smoke kanıtını kaydet.
+- `windows-v0.1.0.1` taslağının (ilk attest edilmiş GitHub yayını, 2026-10-11'de
+  bağımsız doğrulandı) temiz Windows 10/11 doğrulamasını (SmartScreen davranışı
+  dahil) kaydet ve taslağı yayımla. Sertifika gelince
   gerçek OV/EV store/HSM sertifikasıyla EXE + katalog imzasını ve RFC3161
   timestamp'i ayrıca üret. Mevcut artifact hâlâ `NotSigned`dır; yayın temiz
   klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
@@ -973,10 +976,10 @@ yarışı, recovery-kalıcı fatal/input korumaları, ortak güvenli probe çık
 minimal signaling audit'i tamamlandı. Container image digest'i, HIGH/CRITICAL
 tarama/SBOM, Windows EXE+katalog imzalama ve release kimliği/anti-rollback/build
 provenance kapıları da kod ve politika olarak tamamlandı; yerel `linux/amd64`
-kapısı 2026-10-09'da üç hedefte yeniden gerçek 0 bulguyla geçti.
-Sıradaki iş Pi `linux/arm64` üzerinde gerçek sıfır
-bulgulu container scan/deploy smoke kanıtı ile GitHub'da derlenip attest edilmiş
-ilk Windows yayınının `verify-provenance` ve temiz Windows 10/11 doğrulamasıdır
+kapısı 2026-10-09'da, Pi `linux/arm64` kapısı 2026-10-11'de üç hedefte gerçek 0
+bulguyla geçti. GitHub'da derlenip attest edilen ilk Windows yayını
+(`windows-v0.1.0.1` taslağı) 2026-10-11'de bağımsız doğrulandı. Sıradaki iş Pi
+deploy smoke kanıtı ile bu taslağın temiz Windows 10/11 doğrulamasıdır
 (sertifika gelene kadar imzasız provenance yolu, depo sahibi kararı 2026-10-11). Başlamadan
 `docs/THREAT_MODEL.md` ve `docs/PHASE4_PLAN.md` dosyalarını oku. Wire v1/v2
 adayları ile alt protokol teklif etmeyen eski EXE'ler v3 sunucuya bağlanamaz;

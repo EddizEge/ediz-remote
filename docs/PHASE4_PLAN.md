@@ -179,7 +179,8 @@ Dilim 4 kararı:
   temiz kaynak ve taban. Gerçek PE fixture'lı 111 politika testi.
 - [ ] Pi `linux/arm64` hedefinde gerçek container kapısını sıfır bulguyla geçir;
   UID 1000 secret/audit volume ve application/coturn health deployment smoke
-  kanıtını kaydet.
+  kanıtını kaydet. (2026-10-11: arm64 kapısı 3/3 hedef sıfır bulguyla geçti,
+  manifest `FCC59887…782B`; deployment smoke bekliyor.)
 - [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
   yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
   sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
@@ -189,9 +190,12 @@ Dilim 4 kararı:
   commit'i, `refs/heads/main`, SLSA predicate, GitHub-hosted runner) ile
   fail-closed doğrular. İki mod birbirinin kaydını kabul etmez. 234 politika
   testi; yerel temiz ağaç sequence 1 uçtan uca koşusu.
-- [ ] İlk GitHub `windows-release` koşusu: GitHub-hosted build, EXE + provenance
+- [x] İlk GitHub `windows-release` koşusu: GitHub-hosted build, EXE + provenance
   manifesti attestation'ı, attestation'lı adayda başarılı `verify-provenance` ve
-  taslak yayın; adayın temiz Windows 10/11 doğrulaması ve SmartScreen davranışı.
+  taslak yayın (2026-10-11, run `38107001498`, `8701f78`, `windows-v0.1.0.1`;
+  ayrı makinede 4/4 `gh attestation verify` ve `verify-provenance` OK).
+- [ ] `windows-v0.1.0.1` adayının temiz Windows 10/11 doğrulaması ve SmartScreen
+  davranışının kaydı; taslağın yayımlanması.
 - [ ] (Sertifika gelince) Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161
   servisiyle temiz ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz
   Windows 10/11 doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.

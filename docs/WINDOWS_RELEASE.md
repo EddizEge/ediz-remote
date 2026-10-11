@@ -323,22 +323,42 @@ Hata kodları: `provenance_path_invalid`, `provenance_manifest_invalid`,
 
 ### CI akışı
 
-Workflow `.github/workflows/windows-release.yml` (`windows-release`) ayrı bir
-değişiklikte eklenir; sözleşme:
+Workflow `.github/workflows/windows-release.yml` (`windows-release`) yalnız elle
+(`workflow_dispatch`) ve yalnız `refs/heads/main` üzerinden çalışır. Tek girdi
+`sequence`dır (1–65535, başında sıfır yok); `run:` bloklarına `${{ }}` ile
+gömülmez, `env:` üzerinden verilir. Üst düzey yetki `permissions: {}`, eşzamanlılık
+`windows-release` grubunda tek koşu (çalışan koşu iptal edilmez), cache yoktur.
+Bütün `uses:` adımları tam commit SHA'sına sabit GitHub action'larıdır
+(`actions/checkout`, `setup-node`, `upload-artifact`, `download-artifact`,
+`attest-build-provenance`); üçüncü taraf action yoktur. Runner'ın 8.3 kısa adlı
+`TEMP`'i iki işte de kısa adsız `RUNNER_TEMP`'e alınır; yol kontrolleri
+gevşetilmez.
 
-1. `build` işi (Windows runner, yalnız `contents: read`, secret yok): checkout →
-   Node 22 → `npm ci` → testler/lint/build/audit → girdi sequence ile
-   `npm run desktop:publish` → aynı değer taban olarak
-   `npm run release:windows:provenance` → `artifacts/windows-desktop/` (win-x64 +
-   provenance.json + SHA256SUMS) `actions/upload-artifact` ile yüklenir.
-2. `release` işi (`needs: build`; `id-token: write`, `attestations: write`,
-   `contents: write`; npm/node bağımlılığı çalıştırmaz): artifact indirilir,
-   hash'ler SHA256SUMS'a karşı yeniden doğrulanır, `actions/attest-build-provenance`
-   ile EXE + provenance.json (+ SHA256SUMS) attest edilir, yalnız `scripts/` için
-   checkout yapılıp `npm run` kullanılmadan
-   `powershell -File scripts/windows-release.ps1 verify-provenance` (`GH_TOKEN` ile)
-   çalıştırılır ve `gh release create --draft` ile taslak yayın açılır. Yayını depo
+1. `build` işi (`windows-2025`, yalnız `contents: read`, secret ve `id-token`
+   yok): depo/dal/sequence doğrulaması → checkout ve commit = `GITHUB_SHA` →
+   Node 22 → `npm ci` → `build` → `test` → `lint` → `native:test` →
+   `desktop:test` → `release:windows:test` → `security:audit` → temiz ağaç kapısı →
+   girdi sequence ile `desktop:publish` → aynı değer taban olarak
+   `release:windows:provenance` → `artifacts/windows-desktop/` düzeni tam olarak
+   `win-x64/` + provenance.json + SHA256SUMS ise 7 günlük artifact olarak yüklenir.
+2. `release` işi (`needs: build`, environment `windows-release`; `contents`,
+   `id-token`, `attestations: write`; npm/node çalıştırmaz): artifact indirilir;
+   ağaç SHA256SUMS'a karşı yeniden doğrulanır (eksik/fazla/yinelenen dosya, yol
+   kaçışı, reparse point, hash); EXE `ProductVersion = <sürüm>+<commit>` ve
+   `FileVersion = <sürüm>.<sequence>` kontrol edilir; anti-rollback için taslaklar
+   dahil sürümler ve `windows-v*` tag'lerindeki en yüksek sequence'ten büyük olma
+   ve tag'in bulunmaması zorunludur. Tam ağaç `EdizRemote.win-x64.zip` olarak
+   paketlenip içeriği SHA256SUMS ile karşılaştırılır. EXE, provenance.json,
+   SHA256SUMS ve zip `actions/attest-build-provenance` ile attest edilir; ardından
+   depo betiği `powershell -File scripts/windows-release.ps1 verify-provenance`
+   (`GH_TOKEN` ile) çalışır ve `gh release create --draft` ile
+   `windows-v<sürüm>.<sequence>` taslak yayını dört dosyayla açılır. Yayını depo
    sahibi elle yayımlar.
+
+EXE tek başına çalışmaz (yanında `Web/` ve `ediz-remote.settings.json` gerekir);
+dağıtım birimi zip'tir. Zip açıldığında `win-x64/` ağacı SHA256SUMS ile birebir
+eşleşmelidir. Depo sahibi `windows-release` environment'ına onay kuralı
+(required reviewer) ve yalnız `main` dal kısıtı ekleyebilir.
 
 ### Yerel kanıt ve kalan iş
 
@@ -359,10 +379,36 @@ yerelde attestation olmadığı için beklenen `provenance_attestation_invalid`,
 `provenance_tree_mismatch` verdi. Aynı ağaçta Authenticode `verify`
 `catalog_missing` ile kapanmaya devam eder.
 
-Kalan: ilk GitHub `windows-release` koşusu, gerçek attestation ile
-`verify-provenance` başarısı ve temiz Windows 10/11 makinesinde indirme +
-doğrulama + SmartScreen davranışı kanıtı. Bunlar alınmadan kriter karşılanmış
-sayılmaz.
+### İlk GitHub koşusu (2026-10-11)
+
+İlk iki koşu `build` işinde fail-closed düştü ve sürüm oluşmadı: runner'ın 8.3
+kısa adlı `TEMP`'i container yol kontrolünde `path_unsafe` verdi (`3fed2b1` ile
+geçici dizin `RUNNER_TEMP`'e alındı, kontrol gevşetilmedi) ve bir container testi
+yerel klasör adına bağlıydı (`8701f78`). Üçüncü koşu (Actions run `38107001498`,
+`windows-2025`, commit `8701f78a11f368e784139d234a3cba6a8b26efda`, sequence `1`)
+iki işte de başarılı oldu: bütün test/lint/build/audit kapıları, publish,
+`provenance`, ağaç yeniden doğrulaması, attestation ve CI içindeki
+`verify-provenance` geçti; `windows-v0.1.0.1` **taslak** yayını açıldı.
+
+| Dosya | Boyut | SHA-256 |
+|---|---|---|
+| `EdizRemote.exe` | `184859904` | `b1e77dc5ecd56208e1ca99c64e7126ea1eb860350e0a94cf1794f17cfde8f516` |
+| `EdizRemote.win-x64.zip` | `79933844` | `3e9952464ca3e62b34a787b7766bc8028d8a4661f3bed0b672535899be75783b` |
+| `EdizRemote.win-x64.provenance.json` | `2724` | `977e44a1528f4bcb39e20d6daf4f803150c64082f5695799f6caec6599d59171` |
+| `EdizRemote.win-x64.SHA256SUMS` | `1188` | `964eb23173148c1ee4756cc2b8eb42a6383e28f6148ed87a2dbdf026f2ced41c` |
+
+EXE kimliği `ProductVersion 0.1.0+8701f78a11f368e784139d234a3cba6a8b26efda`,
+`FileVersion 0.1.0.1`, Authenticode `NotSigned`. Bağımsız doğrulama (ayrı bir
+Windows makinesi, taslaktan indirilen dosyalar): dört dosya için yukarıdaki en sıkı
+`gh attestation verify` politikası (signer/source digest = commit,
+`github-hosted`) başarılı, yanlış commit ile doğrulama düştü; zip içindeki EXE
+tekil EXE ile aynı; zip'ten açılan ağaçta `verify-provenance` (taban 1)
+`WINDOWS_RELEASE_PROVENANCE_VERIFY_OK`, bir dosya değiştirilince
+`provenance_tree_mismatch`, taban 2 ile `release_rollback_rejected`.
+
+Kalan: temiz Windows 10/11 makinesinde indirme + çalıştırma + SmartScreen
+davranışı kanıtı ve taslağın depo sahibince yayımlanması. Bu alınmadan kriter
+karşılanmış sayılmaz.
 
 ## Dağıtım ve kalan production engeli
 

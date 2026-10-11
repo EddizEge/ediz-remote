@@ -170,9 +170,10 @@ Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOP
 | 5 | İmzalı installer ve güncelleme | ⏳ Sırada |
 | 6 | Soak testleri ve GPU/ağ matrisi | ⏳ Sırada |
 
-Faz 4'te kalan başlıca kabul işleri: Pi `linux/arm64` gerçek scan/deploy kanıtı,
-GitHub'da derlenip attest edilmiş ilk Windows yayını ve temiz Windows 10/11
-doğrulaması. Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
+Faz 4'te kalan başlıca kabul işleri: Pi deploy kanıtı (`linux/arm64` gerçek
+scan 2026-10-11'de sıfır bulguyla geçti) ve GitHub'da derlenip attest edilen ilk
+Windows yayınının (`windows-v0.1.0.1`, taslak) temiz Windows 10/11 doğrulaması.
+Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
 bütünlük ve kaynak GitHub artifact attestation + SHA-256 ile doğrulanır
 (`npm run release:windows:verify-provenance`), SmartScreen ilk çalıştırmada uyarı
 verir. Anti-rollback ve build provenance kapısı hazırdır; yayın temiz klondan
