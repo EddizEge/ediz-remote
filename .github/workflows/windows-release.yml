@@ -55,6 +55,18 @@ jobs:
             throw 'sequence 1-65535 arası, başında sıfır olmayan bir tamsayı olmalı.'
           }
 
+      # Runner'ın varsayılan TEMP'i 8.3 kısa ad (RUNNER~1) içerir; container ve
+      # release yol kontrolleri kanonik olmayan yolu takma ad sayıp reddeder.
+      # Kontrol gevşetilmez; geçici dizin kısa adsız runner.temp'e alınır.
+      - name: Geçici dizini kanonik yola al
+        run: |
+          $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw 'RUNNER_TEMP kanonik bir dizin değil.'
+          }
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Kaynağı al
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -189,6 +201,15 @@ jobs:
               [int]$env:RELEASE_SEQUENCE -gt 65535) {
             throw 'sequence 1-65535 arası, başında sıfır olmayan bir tamsayı olmalı.'
           }
+
+      - name: Geçici dizini kanonik yola al
+        run: |
+          $temp = [IO.Path]::GetFullPath($env:RUNNER_TEMP)
+          if ($temp.Contains('~') -or -not (Test-Path -LiteralPath $temp -PathType Container)) {
+            throw 'RUNNER_TEMP kanonik bir dizin değil.'
+          }
+          "TEMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TMP=$temp" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Paketi indir
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
