@@ -76,14 +76,15 @@ jobs:
       - name: npm ci
         run: npm ci
 
+      # Testler derlenmiş protocol/signaling çıktısını kullanır (ör. TURN preflight).
+      - name: npm run build
+        run: npm run build
+
       - name: npm test
         run: npm test
 
       - name: npm run lint
         run: npm run lint
-
-      - name: npm run build
-        run: npm run build
 
       - name: npm run native:test
         run: npm run native:test
