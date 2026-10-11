@@ -155,7 +155,8 @@ Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Doc
 ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-09 yerel tabanında
 seed'li fuzz ve signaling durum makinesi matrisleri dahil 576 npm testi, 42 native
 testi, 113 desktop testi ve 111 Windows release testi başarılıdır; npm/native
-paketlerinde birer ortam testi atlanmıştır.
+paketlerinde birer ortam testi atlanmıştır. 2026-10-11'de provenance yolu
+eklendikten sonra Windows release testleri 234'tür.
 Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOPMENT.md).
 
 ## Yol haritası
@@ -170,9 +171,12 @@ Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOP
 | 6 | Soak testleri ve GPU/ağ matrisi | ⏳ Sırada |
 
 Faz 4'te kalan başlıca kabul işleri: Pi `linux/arm64` gerçek scan/deploy kanıtı,
-store/HSM sertifikalı EXE + katalog, RFC3161 timestamp ve temiz Windows 10/11
-doğrulaması. Anti-rollback ve build provenance kapısı hazırdır; ilk imzalı yayın
-temiz klondan artan release sequence ile üretilir. [Faz 4 planı →](docs/PHASE4_PLAN.md)
+GitHub'da derlenip attest edilmiş ilk Windows yayını ve temiz Windows 10/11
+doğrulaması. Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
+bütünlük ve kaynak GitHub artifact attestation + SHA-256 ile doğrulanır
+(`npm run release:windows:verify-provenance`), SmartScreen ilk çalıştırmada uyarı
+verir. Anti-rollback ve build provenance kapısı hazırdır; yayın temiz klondan
+artan release sequence ile üretilir. [Faz 4 planı →](docs/PHASE4_PLAN.md)
 
 Ses, dosya aktarımı, clipboard ve gözetimsiz erişim V1 sonrası kapsamındadır.
 UAC secure desktop, kilit ekranı, Session 0 ve `Ctrl+Alt+Del` sınırları aşılmaz.

@@ -215,6 +215,11 @@ sonrasına bırakılmıştır.
   `<sürüm>.<sequence>`), bu kimliği taşıyan strict manifest v2 ve imza öncesi temiz
   kaynak/`HEAD`/sürüm/sequence tabanı kontrol eden anti-rollback/build provenance
   kapısı.
+- Sertifikasız yayın için provenance (GitHub attestation) modu: aynı kaynak/
+  sequence/taban kapısıyla tüm `win-x64` ağacını kapsayan strict, kanonik
+  provenance manifesti + SHA256SUMS (`release:windows:provenance`) ve ağaç/kimlik/
+  taban ile `gh attestation verify` sonucunu fail-closed denetleyen
+  `release:windows:verify-provenance`.
 - Her derinlikte `__proto__`, eşlenmemiş UTF-16 surrogate ve kap bütçesi reddeden
   protokol ön taraması; istisna yerine temiz ret veren WPF köprü ayrıştırıcıları ve
   protokol, canlı signaling, web DataChannel ve WPF köprüsü için seed'li fuzz matrisi.
@@ -356,6 +361,20 @@ sonrasına bırakılmıştır.
   `npm test` 576 başarılı + 1 atlanan (signaling 407 + 1); lint ve build temiz.
   Kriter bazında kanıt `docs/PHASE4_ACCEPTANCE.md` altındadır.
 
+2026-10-11 provenance (GitHub attestation) dilimi:
+
+- Depo sahibi kararı: ücretli Authenticode sertifikası gelene kadar Faz 4'ün
+  Windows binary bütünlüğü/kaynağı kriteri GitHub artifact attestation (Sigstore
+  SLSA build provenance) + provenance manifesti ile karşılanacak; SmartScreen
+  uyarısı kabul edilmiş artık risktir (ER-T13). Authenticode yolu değişmedi.
+- Windows release testleri 111 → 234/234 (123 provenance); 3 kasıtlı mutasyon
+  (hash karşılaştırması, fazla dosya reddi, attestation çıkış kodu) düştü. Toplu
+  `npm test` 576 + 1 atlanan, lint temiz.
+- Yerel temiz ağaç `3091505`, sequence 1 adayında `provenance` OK;
+  `verify-provenance` yerel attestation olmadığı için beklenen
+  `provenance_attestation_invalid`. İlk GitHub koşusu ve temiz Windows 10/11
+  kanıtı bekliyor.
+
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
 ## 6. Bilinen sınırlar
@@ -370,7 +389,9 @@ Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
   önlemlerini aşarak çözmeye çalışma.
 - Installer, gerçek code signing sertifikası/imzalı production artifact ve
   otomatik güncelleme yok; imzalama/katalog ve anti-rollback/build provenance
-  kapısı kod ve politika olarak hazırdır.
+  kapısı kod ve politika olarak hazırdır. Sertifika gelene kadar Windows yayını
+  imzasız provenance (GitHub attestation) yoluyla çıkar; işletim sistemi yayıncı
+  güveni yoktur ve SmartScreen ilk çalıştırmada uyarır.
 - Wire v3/minimum sürüm kapısı tamamlandı; gelecekteki v4 capability ve geriye
   uyumluluk/iki aşamalı rollout politikası henüz tamamlanmadı.
 - Daha geniş uzak ağ, uzun süreli soak ve farklı GPU sürücü matrisi henüz
@@ -703,6 +724,13 @@ Tamamlanan güvenlik geliştirmeleri (2026-08-23–2026-10-09):
   `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanını; `verify` manifest/EXE kimlik
   eşliğini, temiz kaynağı ve tabanı zorunlu tutar. Yerel politika/katalog testleri
   gerçek PE fixture'larıyla 111/111 geçmiştir.
+- 2026-10-11: depo sahibi kararıyla sertifikasız provenance yolu eklendi.
+  `release:windows:provenance` aynı ön koşullarla ağacın tamamı için
+  `EdizRemote.win-x64.provenance.json` (şema 1, `integrity: github-attestation`)
+  ve `EdizRemote.win-x64.SHA256SUMS` üretir; `release:windows:verify-provenance`
+  ağaç/manifest/SHA256SUMS/EXE kimliği/taban ve `gh attestation verify` (depo,
+  `.github/workflows/windows-release.yml`, `refs/heads/main`, commit,
+  GitHub-hosted runner) ile doğrular. İki mod birbirinin kaydını kabul etmez.
 - 2026-10-09: yeni npm duyuruları sonrası `proxy-addr` 2.0.8, `shell-quote` 1.12.0,
   `source-map-js` 1.2.2 ve `vitest` 4.1.11 lockfile yükseltmeleri; npm/NuGet 0 açık
   ve yerel amd64 container kapısı yeniden 3/3 hedefte 0 bulgu.
@@ -730,10 +758,12 @@ Kalan yapılacaklar:
 - Pi `linux/arm64` üzerinde gerçek `security:containers` kapısını sıfır bulguyla
   geçir; doğrulanmış immutable application/coturn image'larıyla UID 1000 secret,
   audit volume ve iki health sonucunu kapsayan deploy smoke kanıtını kaydet.
-- Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog imzasını ve RFC3161
-  timestamp'i üret; temiz Windows 10/11 doğrulamasını kaydet. Mevcut artifact
-  hâlâ `NotSigned`dır. Anti-rollback/build provenance kapısı hazırdır; ilk imzalı
-  yayın temiz klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
+- `windows-release` workflow'unun ilk GitHub koşusunda attest edilmiş adayı
+  `release:windows:verify-provenance` ile doğrula; taslak yayını ve temiz Windows
+  10/11 doğrulamasını (SmartScreen davranışı dahil) kaydet. Sertifika gelince
+  gerçek OV/EV store/HSM sertifikasıyla EXE + katalog imzasını ve RFC3161
+  timestamp'i ayrıca üret. Mevcut artifact hâlâ `NotSigned`dır; yayın temiz
+  klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
 - Pi, imza ve production kanıtı geldikçe `docs/PHASE4_ACCEPTANCE.md`'yi güncelle.
 
 Kabul kriterleri:
@@ -945,8 +975,9 @@ tarama/SBOM, Windows EXE+katalog imzalama ve release kimliği/anti-rollback/buil
 provenance kapıları da kod ve politika olarak tamamlandı; yerel `linux/amd64`
 kapısı 2026-10-09'da üç hedefte yeniden gerçek 0 bulguyla geçti.
 Sıradaki iş Pi `linux/arm64` üzerinde gerçek sıfır
-bulgulu container scan/deploy smoke kanıtı ile gerçek store/HSM sertifikalı
-EXE+katalog/RFC3161 imza ve temiz Windows 10/11 doğrulamasıdır. Başlamadan
+bulgulu container scan/deploy smoke kanıtı ile GitHub'da derlenip attest edilmiş
+ilk Windows yayınının `verify-provenance` ve temiz Windows 10/11 doğrulamasıdır
+(sertifika gelene kadar imzasız provenance yolu, depo sahibi kararı 2026-10-11). Başlamadan
 `docs/THREAT_MODEL.md` ve `docs/PHASE4_PLAN.md` dosyalarını oku. Wire v1/v2
 adayları ile alt protokol teklif etmeyen eski EXE'ler v3 sunucuya bağlanamaz;
 production'da web/signaling/desktop birlikte güncellenmelidir.

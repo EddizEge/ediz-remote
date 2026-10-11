@@ -1,6 +1,6 @@
 # Faz 4 kabul kanıtı
 
-Tarih: 2026-10-09
+Tarih: 2026-10-09 (son güncelleme 2026-10-11)
 
 Durum: **TAMAMLANMADI.** Kod, birim/entegrasyon testi, fuzz ve yerel gerçek
 ortam kanıtlarının büyük bölümü hazırdır; production ve hedef platform kanıtları
@@ -19,9 +19,10 @@ Kaynaklar: [`AGENTS.md`](../AGENTS.md) §5 ve §7 Faz 4,
 | Bloklayıcı | Etkilediği kabul | Eksik girdi |
 |---|---|---|
 | Pi `linux/arm64` üzerinde gerçek `security:containers` kapısı ve iki servisli deploy smoke'u (UID 1000 secret/audit volume, application/coturn health, canlı coturn stdout suppression, audit 503/restart davranışı) | Kriter 4, supply-chain ve deployment çıkış kapıları | Pi erişimi için kullanıcı onayı |
-| Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog Authenticode imzası ve RFC3161 timestamp'i; temiz ağaçtan sequence ≥ 1 ilk imzalı yayın | Kriter 5, imzalı artifact çıkış kapısı | OV/EV code signing sertifikası (store/HSM) ve güvenilir RFC3161 sağlayıcısı |
-| İmzalı adayın temiz Windows 10/11 makinesinde doğrulanması | Kriter 5 | Temiz Windows 10/11 test makinesi |
-| Yeni web, signaling ve Windows paketinin production'a birlikte alınması ve gerçek HTTPS/WSS deployment testi | Kriter 1, 2 ve 4'ün production kanıtı; Cloudflare çıkış kapısı | Yukarıdaki Pi onayı ve imzalı Windows paketi |
+| İlk GitHub `windows-release` koşusu: GitHub-hosted build, SLSA build provenance attestation ve attestation'lı adayda başarılı `release:windows:verify-provenance` (depo sahibi kararı 2026-10-11: sertifika gelene kadar provenance yolu) | Kriter 5, Windows artifact çıkış kapısı | `.github/workflows/windows-release.yml` workflow'unun `main`'e alınması ve ilk koşu |
+| Provenance adayının temiz Windows 10/11 makinesinde indirilip doğrulanması ve SmartScreen davranışının kaydı | Kriter 5 | Temiz Windows 10/11 test makinesi |
+| (İleride) Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog Authenticode imzası ve RFC3161 timestamp'i | Yayıncı güveni; Faz 4 kabulünü artık bloklamaz (ER-T13 artık risk kabulü) | OV/EV code signing sertifikası ve güvenilir RFC3161 sağlayıcısı |
+| Yeni web, signaling ve Windows paketinin production'a birlikte alınması ve gerçek HTTPS/WSS deployment testi | Kriter 1, 2 ve 4'ün production kanıtı; Cloudflare çıkış kapısı | Yukarıdaki Pi onayı ve attestation'lı Windows paketi |
 
 Tablo tabanlı süresi geçmiş/replay durum makinesi matrisi 2026-10-09'da
 tamamlandı (`20b972b`); artık bloklayıcı değildir.
@@ -51,7 +52,7 @@ aktarma `425abc9` içinde gelir. 2026-10-09 işleri ayrı commit'lerdedir.
 | 2 | Eski/replay control mesajları etkisizdir | `services/signaling/test/stateMachine.test.ts` (negotiation replay: aynı offer tekrarı, ikinci answer, yeni offer sonrası eski candidate, yanlış lane, ters yön, 257. offer, resume boyunca korunan durum; eski resume token replay'i), `apps/web/src/features/webrtc/peerProtocol.test.ts`, `apps/web/src/features/webrtc/negotiation.test.ts`, `apps/windows-desktop.Tests/ControlInputTests.cs`, `services/signaling/test/server.test.ts`. Ortak session `sequence`, rate reddinde ilerlemeyen watermark, yalnız başarılı uygulamada ilerleyen native watermark | 2026-10-09: durum makinesi 326/326, web 106, signaling 407 + 1 atlanan, desktop 113/113 | `50ae6f6`, `20b972b`, `425abc9`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | Production control soak ölçümü (ER-T07) |
 | 3 | Fuzz/bozuk mesaj testleri servisi veya host'u düşürmez | `packages/protocol/test/fuzz.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/webrtc/peerProtocol.fuzz.test.ts`, `apps/windows-desktop.Tests/BridgeFuzzTests.cs`; yardımcı `packages/protocol/test/fuzzSupport.ts` | 2026-10-09: 24 fuzz/regresyon testi; protocol 18, web 106, signaling 81 + 1 atlanan, desktop 113/113. Canlı kampanya sonrası health ve temiz çiftin relay'i sağlam. İki gerçek bulgu kapatıldı (iç içe `__proto__`, WPF eşlenmemiş surrogate istisnası); oracle olarak eski korumalar testte düştü | `6bdf2a5` | Fuzz, birim/entegrasyon | Karşılandı (test kapsamı) | Production negotiation-churn/soak ölçümü (ER-T06); fiziksel host üzerinde fuzz çalıştırılmadı |
 | 4 | Secret/token/SDP içeren üretim logu bulunmaz | `services/signaling/test/securityAudit.test.ts`, `services/signaling/test/securityAuditConfig.test.ts`, `services/signaling/test/server.test.ts`, `scripts/safe-output.test.mjs`, `scripts/browser-turn-simulation-redaction.test.mjs`, `apps/windows-host.Tests/SafeHostDiagnosticsTests.cs`; `npm run security-output:test`. Strict sekiz alanlı JSONL audit, coturn `no-stdout-log` | 2026-10-09: güvenli çıktı 10/10, signaling 81 + 1 atlanan; sentinel testleri stdout/stderr, audit ve TURN/browser probe tanılarını kapsar | `425abc9` | Birim/entegrasyon | Kısmen | Canlı production stdout/stderr capture ve Pi audit volume/secret smoke'u (Pi onayı); gelecekteki destek paketi testi (Faz 6) |
-| 5 | Yayınlanan binary bütünlüğü doğrulanabilir | `scripts/windows-release.test.ps1` (`npm run release:windows:test`), `npm run release:windows:manifest`, `npm run release:windows:verify`, `npm run release:windows:sign` | 2026-10-09: release politika/katalog 111/111. Gerçek aday `NotSigned`; `verify` → `catalog_missing`, tabansız `sign` → `release_floor_missing`, tabanlı `sign` → imza denemeden `provenance_dirty_source` | `971506f`, `8c209df`, `893de84` | Birim/entegrasyon, yerel gerçek ortam | Bekliyor | OV/EV store/HSM sertifikası, RFC3161 sağlayıcısı, temiz ağaçtan sequence ≥ 1 aday, temiz Windows 10/11 makinesi |
+| 5 | Yayınlanan binary bütünlüğü doğrulanabilir | Depo sahibi kararı (2026-10-11): ücretli sertifika gelene kadar **provenance yolu** — GitHub'da derlenen ağaç için SLSA build provenance attestation + provenance manifesti + SHA256SUMS ([`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-yolu)). `scripts/windows-release.test.ps1` (`npm run release:windows:test`), `npm run release:windows:provenance`, `npm run release:windows:verify-provenance`; workflow `.github/workflows/windows-release.yml`. Authenticode yolu (`release:windows:sign`/`verify`) değişmeden kalır | 2026-10-11: release politika/katalog/provenance 234/234 (123 provenance; 3 kasıtlı mutasyon düştü). Temiz ağaçta `3091505`'ten sequence 1 gerçek aday (`NotSigned`): `provenance` → 12 dosyalık manifest + SHA256SUMS, deterministik; kirli ağaç → `provenance_dirty_source`; `verify-provenance` → attestation olmadığı için `provenance_attestation_invalid`, kurcalanmış ağaç → `provenance_tree_mismatch`. 2026-10-09 Authenticode tabanı: `verify` → `catalog_missing` | `971506f`, `8c209df`, `893de84`, `3091505` | Birim/entegrasyon, yerel gerçek ortam | Kısmen — kod ve testler hazır; ilk GitHub koşusu, attestation doğrulaması ve temiz Windows 10/11 kanıtı bekliyor | İlk `windows-release` koşusu ve başarılı `verify-provenance`; temiz Windows 10/11 makinesi. Yayıncı güveni/SmartScreen artık risk olarak kabul edildi (ER-T13); Authenticode için OV/EV sertifika + RFC3161 ileride |
 
 Gerekçeler:
 
@@ -64,7 +65,11 @@ Gerekçeler:
   production soak bu kriterin değil ER-T06'nın kalan işidir.
 - Kriter 4 "üretim logu" ister; yalnız yerel sentinel testi vardır, canlı production
   capture yapılmamıştır.
-- Kriter 5 için kapı kodu hazırdır, ancak imzalı tek bir artifact yoktur.
+- Kriter 5 için depo sahibi 2026-10-11'de Authenticode yerine GitHub attestation
+  tabanlı provenance yolunu seçti. Kod, testler ve yerel uçtan uca koşu hazırdır;
+  ancak GitHub'da derlenmiş ve attest edilmiş tek bir aday henüz yoktur. Yayıncı
+  güveni ve SmartScreen uyarısı bu yolda kalır; kabul edilmiş artık risktir
+  (ER-T13).
 
 ## Tehdit modeli §11 çıkış kapıları
 
@@ -77,7 +82,7 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 | Global/IP kaynak kotaları ve signal/ICE/message rate limitleri | `services/signaling/test/rateLimit.test.ts`, `services/signaling/test/server.test.ts` | Tarihsel 2026-08-24 Dilim 2: signaling 38/38 (64 KiB, flood, bozuk UTF-8, derin JSON, takeover). Güncel 2026-10-09: signaling 81 + 1 atlanan | `425abc9` | Birim/entegrasyon | Kısmen | Production kapasite ölçümü |
 | Signaling stdout/stderr, JSONL audit ve TURN/browser probe tanılarında secret sentinel sızıntı testi | Kriter 4'teki dosyalar; `npm run security-output:test` | 2026-10-09: güvenli çıktı 10/10, TURN 13/13 | `425abc9` | Birim/entegrasyon | Kısmen | Canlı production capture; gelecekteki destek paketi doğrulaması |
 | Production npm/NuGet/container taraması, SBOM ve gerekçeli baseline | `npm run security:audit`, `npm run security:containers`, `scripts/container-security-audit.test.mjs` | 2026-10-09: npm + dört NuGet projesi 0 açık; container politika 22/22; yerel `linux/amd64` 3/3 hedef HIGH/CRITICAL `0` | `d71b739` | Birim/entegrasyon, yerel gerçek ortam | Kısmen | Pi `linux/arm64` gerçek scan ve deployment smoke (Pi erişim onayı) |
-| Authenticode imzalı Windows artifact ve bağımsız imza/hash doğrulaması | Kriter 5'teki dosya ve komutlar | 2026-10-09: 111/111 politika testi; aday `NotSigned`, katalog yok | `971506f`, `8c209df`, `893de84` | Birim/entegrasyon, yerel gerçek ortam | Bekliyor | OV/EV sertifika + RFC3161 sağlayıcısı; temiz Windows 10/11 makinesi |
+| Bütünlüğü ve kaynağı doğrulanabilir Windows artifact'i (Authenticode yerine 2026-10-11'den beri GitHub attestation + provenance manifesti) ve bağımsız hash/attestation doğrulaması | Kriter 5'teki dosya ve komutlar | 2026-10-11: 234/234 politika testi; yerel sequence 1 adayında provenance üretildi, `verify-provenance` attestation olmadığı için beklenen biçimde düştü. Authenticode adayı `NotSigned`, katalog yok | `971506f`, `8c209df`, `893de84`, `3091505` | Birim/entegrasyon, yerel gerçek ortam | Kısmen | İlk GitHub koşusu ve attestation doğrulaması; temiz Windows 10/11 makinesi |
 | Cloudflare origin/proxy policy ile gerçek HTTPS/WSS deployment testi | `services/signaling/test/server.test.ts` (origin, subprotocol, proxy spoof) | Kod/test geçer; Faz 4 v3 paketiyle gerçek deployment testi yapılmadı | `425abc9` | Birim/entegrasyon | Bekliyor | v3 web/signaling/desktop paketinin production'a alınması (Pi onayı) |
 | Faz 4 kabul kanıtlarının `docs/PHASE4_ACCEPTANCE.md` altında toplanması | Bu belge | 2026-10-09: ilk sürüm ve durum makinesi matrisi sonrası güncelleme | `51890cf` | — | Karşılandı | Pi, imza ve production kanıtı geldikçe güncellenir |
 
@@ -123,6 +128,7 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 | 2026-10-09 | Container kapısı | Yerel `linux/amd64` 3/3 hedef HIGH/CRITICAL `0`; application image Node/no-npm smoke'u | Yerel gerçek ortam | Güncel; coturn health ve HMAC relay bu koşuda yeniden çalıştırılmadı |
 | 2026-10-09 | Fuzz dilimi sonrası | Toplu 250 + 1 atlanan (TURN 13, güvenli çıktı 10, container 22, web 106, protocol 18, signaling 81 + 1 atlanan); native 42 + 1 atlanan; desktop 113/113; release 111/111; lint/build/audit temiz | Birim/entegrasyon, fuzz | `6bdf2a5` |
 | 2026-10-09 | Durum makinesi matrisi ve join düzeltmesi | Durum makinesi 326/326; toplu 576 + 1 atlanan (signaling 407 + 1 atlanan); lint/build temiz; 10 + 5 kasıtlı bozulma matriste düştü | Birim/entegrasyon | Güncel; `20b972b` |
+| 2026-10-11 | Provenance (GitHub attestation) yolu | Release politika/katalog/provenance 111 → 234/234; 3 kasıtlı mutasyon düştü; toplu 576 + 1 atlanan; lint temiz. Yerel temiz ağaç `3091505`, sequence 1 adayında `provenance` OK, `verify-provenance` → `provenance_attestation_invalid` (yerel attestation yok) | Birim/entegrasyon, yerel gerçek ortam | Güncel; `3091505` |
 
 Bu koşuların hiçbiri production ortamında yapılmamıştır. Fiziksel EXE/UI smoke
 2026-09-02 ve 2026-10-09 koşularında çalıştırılmadı; son fiziksel EXE smoke
@@ -150,6 +156,20 @@ Kaynak: [`DEVELOPMENT.md`](DEVELOPMENT.md#windows-masaüstü-uygulaması) ve
 | Kapı sonuçları | `verify` `catalog_missing`; tabansız `sign` `release_floor_missing`; tabanlı `sign` `provenance_dirty_source` |
 | Önceki aday | `971506f` adayı `DED61FD7…D71D`, aynı gün bu adayla değiştirildi |
 
+### Provenance yolu yerel adayı (2026-10-11)
+
+Kaynak: [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#yerel-kanıt-ve-kalan-iş).
+
+| Alan | Değer |
+|---|---|
+| Durum | Yerel uçtan uca koşu — **GitHub'da derlenmedi, attestation yok, production değil** |
+| Kaynak | Temiz ağaç, commit `3091505`, sequence `1` |
+| EXE | `184859904` bayt, SHA-256 `B76FC9718E2AAB877552E8261850CBC834AAD4EB70251B1C08E7366F632D3554`, `NotSigned` |
+| Sürüm kaynağı | `ProductVersion 0.1.0+30915050ca8dcdc1efc82bc0f6d7933f21ede0a8`, `FileVersion 0.1.0.1` |
+| Provenance manifesti | Şema `1`, 12 dosya, `186112294` bayt; SHA-256 `5F3B83E89629CADCE268B7B7138A76CA36ECC3D467788C6A6FD71AC2D4803777` (yeniden üretimde aynı) |
+| SHA256SUMS | SHA-256 `F0148676A549D1D6DB7F68FE1DE2E12720FC7F67F9EFBA74F0690BC42AAA660B`; `sha256sum -c` geçti |
+| Kapı sonuçları | `verify-provenance` → `provenance_attestation_invalid`; `gh` yokken `provenance_tool_missing`; taban 2 → `release_rollback_rejected`; kurcalanmış/fazla dosya → `provenance_tree_mismatch`; kirli ağaçta `provenance` → `provenance_dirty_source` |
+
 ### Container kapısı
 
 Kaynak: [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-09-yerel-linuxamd64-kanıtı).
@@ -171,7 +191,9 @@ Kaynak: [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-09-yerel-linuxamd6
 
 1. Pi erişim onayıyla güncel kaynaktan `linux/arm64` gerçek container kapısını ve
    iki servisli deploy smoke'unu çalıştır; canlı stdout/audit kanıtını kaydet.
-2. Gerçek sertifika ve RFC3161 sağlayıcısıyla temiz ağaçtan sequence ≥ 1 adayı
-   imzala; temiz Windows 10/11 makinesinde doğrula.
+2. `windows-release` workflow'unu `main`'e alıp ilk koşuyu yap: GitHub'da derlenen
+   sequence ≥ 1 adayı attest et, `verify-provenance` başarısını ve taslak yayını
+   kaydet; adayı temiz Windows 10/11 makinesinde indirip doğrula (SmartScreen
+   davranışıyla birlikte). Authenticode imzası sertifika geldiğinde ayrıca eklenir.
 3. Web/signaling/desktop v3 paketini birlikte production'a al; HTTPS/WSS deployment
    testini kaydet ve bu belgeyi son durumla güncelle.

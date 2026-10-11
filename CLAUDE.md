@@ -15,7 +15,9 @@ belgelerin yerine geçmez.
   Lisanslama/abonelik veya geniş yönetim paneli şu an öncelik değildir.
 - Faz 1, 2 ve 3 kabulü tamamlandı. **Faz 4 güvenlik sertleştirmesi devam ediyor.**
 - Faz 4'ün önemli kod ve politika işleri hazır; gerçek Pi arm64 deployment ve
-  gerçek sertifikalı Windows release kabulü henüz tamamlanmadı.
+  Windows release kabulü henüz tamamlanmadı. Windows için depo sahibinin
+  2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub attestation ile
+  doğrulanan provenance yolu (bölüm 6B).
 - Installer ve otomatik güncelleme Faz 5; soak ve GPU/ağ matrisi Faz 6 kapsamındadır.
 - GitHub: <https://github.com/EddizEge/ediz-remote> — public, varsayılan dal `main`.
 - Yerel proje: `C:\Users\Eddiz\Remote Desk`.
@@ -142,7 +144,7 @@ ve [protokol belgesidir](docs/PROTOCOL.md).
 | Native capture / encode / RTP / peer | `apps/windows-host/Capture/`, `Encoding/`, `Transport/`, `WebRtc/`, `Streaming/` |
 | Güvenli tanı çıktısı | `scripts/safe-output.mjs`, `apps/windows-host/SafeHostDiagnostics.cs` |
 | Container release/deploy | `scripts/container-security-audit.mjs`, `container-deploy.mjs`, `Dockerfile`, `infra/coturn/` |
-| Windows imzalama/katalog | `scripts/windows-release.ps1`, `windows-release-lib.psm1`, `windows-release.test.ps1` |
+| Windows imzalama/katalog/provenance | `scripts/windows-release.ps1`, `windows-release-lib.psm1`, `windows-release.test.ps1` |
 
 Son teknik düzeltme: Docker/containerd runtime image ID ile Trivy'nin Docker
 archive config digest'i aynı olmayabilir. `imageId` ve `imageConfigDigest` ayrı
@@ -188,8 +190,8 @@ istediğinde çalıştır; arka plan dosya/komut çalışmasını tercih et.
 yenile; yeni bir açık çıkarsa fail-closed kapıyı gevşetmeden çöz. Sonra şu işleri
 sırayla, erişim ve gerçek kanıt bulunduğunda tamamla. Fuzz katmanı, 326 testlik
 durum makinesi matrisi ve `docs/PHASE4_ACCEPTANCE.md` 2026-10-09'da tamamlandı
-(toplu `npm test` 576 + 1 atlanan); kalan Faz 4 kabulü Pi, imza sertifikası ve
-temiz Windows 10/11 girdisine bağlıdır.
+(toplu `npm test` 576 + 1 atlanan); kalan Faz 4 kabulü Pi, ilk GitHub
+`windows-release` koşusu/attestation ve temiz Windows 10/11 girdisine bağlıdır.
 
 ### A. Pi arm64 container kabulü
 
@@ -210,7 +212,27 @@ Production Compose doğrudan build/pull yapmaz. `AGENTS.md` içindeki eski
 `docker compose up -d --build` kısa örneği production kabul yöntemi değildir;
 [güncel container release belgesini](docs/CONTAINER_RELEASE.md) izle.
 
-### B. Gerçek Windows release kabulü
+### B. Windows release kabulü
+
+**Provenance yolu (depo sahibi kararı, 2026-10-11; şimdiki yol).** Ücretli
+sertifika yok; kriter GitHub artifact attestation (Sigstore SLSA build
+provenance) + provenance manifesti ile karşılanacak. Yayıncı güveni yoktur,
+SmartScreen uyarısı kalır (ER-T13 artık riski kabul edildi).
+
+1. `npm run release:windows:provenance` temiz ağaç, commit = `HEAD`, sequence ≥ 1
+   ve `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanıyla `win-x64` ağacının tamamı
+   için `artifacts/windows-desktop/EdizRemote.win-x64.provenance.json` (şema 1,
+   `integrity: github-attestation`) ve `EdizRemote.win-x64.SHA256SUMS` üretir.
+2. `npm run release:windows:verify-provenance` ağaç/manifest/SHA256SUMS/EXE
+   kimliği/taban ve `gh attestation verify` (depo, signer workflow
+   `.github/workflows/windows-release.yml`, `refs/heads/main`, commit,
+   GitHub-hosted runner) ile fail-closed doğrular. Kod ve 234 politika testi hazır.
+3. Kalan: workflow'un (`windows-release`) ilk GitHub koşusu, attestation'lı adayda
+   başarılı `verify-provenance`, taslak yayın ve temiz Windows 10/11 kanıtı.
+   Bunlar olmadan kriteri karşılanmış sayma; Authenticode doğrulamasını
+   provenance manifestiyle gevşetme.
+
+**Authenticode yolu (sertifika gelince).**
 
 1. Gerçek OV/EV store/HSM sertifikası, non-exportable key, trusted signer public
    SHA-256 allowlist'i ve HTTPS RFC3161 timestamp sağlayıcısı gerekir.
@@ -222,8 +244,8 @@ Production Compose doğrudan build/pull yapmaz. `AGENTS.md` içindeki eski
 4. Temiz Windows 10/11 üzerinde doğrula. Anti-rollback/build provenance kapısı
    2026-10-09'da tamamlandı (`docs/WINDOWS_RELEASE.md`): yayın temiz klondan,
    `EDIZ_REMOTE_RELEASE_SEQUENCE` ≥ 1 ile publish edilir; sign/verify
-   `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanını ister. Sertifika yoksa bu kabulü
-   tamamlandı sayma.
+   `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanını ister. Sertifika yoksa
+   Authenticode kabulünü tamamlandı sayma.
 
 Wire v3 rollout'ta web/signaling/desktop birlikte güncellenmelidir. Pi'de daha
 önce direct/recovery/relay kabulü yapıldı; ancak **bugünkü canlı sürüm bu teslimde
