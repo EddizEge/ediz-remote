@@ -705,14 +705,15 @@ test('creates image-bound SBOM evidence and an immutable deployment reference', 
     assert.ok(buildCall.includes('--iidfile'))
     assert.equal(buildCall.includes('--tag'), false)
   }
-  assert.match(buildCalls[0].at(-1), /ediz-remote-repository-test-|Remote Desk/u)
+  // Build context klasör adına değil (CI'da depo farklı yoldadır) tam depo köküne bağlıdır.
+  assert.equal(buildCalls[0].at(-1), path.resolve(REPOSITORY_ROOT))
   assert.deepEqual(
     buildCalls[0].slice(buildCalls[0].indexOf('--target'), buildCalls[0].indexOf('--target') + 2),
     ['--target', 'runtime-base'],
   )
-  assert.match(buildCalls[1].at(-1), /ediz-remote-repository-test-|Remote Desk/u)
+  assert.equal(buildCalls[1].at(-1), path.resolve(REPOSITORY_ROOT))
   assert.equal(buildCalls[1].includes('--target'), false)
-  assert.match(buildCalls[2].at(-1), /infra[\\/]coturn$/u)
+  assert.equal(buildCalls[2].at(-1), path.resolve(REPOSITORY_ROOT, 'infra', 'coturn'))
   const databaseCall = calls.find((argumentsList) => (
     argumentsList[0] === 'run' && argumentsList.includes('--download-db-only')
   ))
