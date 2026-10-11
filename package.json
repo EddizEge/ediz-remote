@@ -27,6 +27,8 @@
     "release:windows:manifest": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 manifest",
     "release:windows:verify": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 verify",
     "release:windows:sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 sign",
+    "release:windows:provenance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 provenance",
+    "release:windows:verify-provenance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.ps1 verify-provenance",
     "release:windows:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-release.test.ps1",
     "turn:probe": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && node scripts/turn-relay-probe.mjs",
     "turn:network-probe": "npm run build --workspace @ediz-remote/protocol && npm run build --workspace @ediz-remote/signaling && node scripts/turn-network-quality-probe.mjs",

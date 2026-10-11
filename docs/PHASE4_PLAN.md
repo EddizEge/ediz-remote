@@ -180,9 +180,21 @@ Dilim 4 kararı:
 - [ ] Pi `linux/arm64` hedefinde gerçek container kapısını sıfır bulguyla geçir;
   UID 1000 secret/audit volume ve application/coturn health deployment smoke
   kanıtını kaydet.
-- [ ] Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161 servisiyle temiz
-  ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz Windows 10/11
-  doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.
+- [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
+  yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
+  sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
+  provenance manifesti (şema 1, `integrity: github-attestation`) ve SHA256SUMS
+  üretir; `release:windows:verify-provenance` ağaç/manifest/SHA256SUMS/EXE
+  kimliği/taban ve `gh attestation verify` (depo, signer workflow, signer/kaynak
+  commit'i, `refs/heads/main`, SLSA predicate, GitHub-hosted runner) ile
+  fail-closed doğrular. İki mod birbirinin kaydını kabul etmez. 234 politika
+  testi; yerel temiz ağaç sequence 1 uçtan uca koşusu.
+- [ ] İlk GitHub `windows-release` koşusu: GitHub-hosted build, EXE + provenance
+  manifesti attestation'ı, attestation'lı adayda başarılı `verify-provenance` ve
+  taslak yayın; adayın temiz Windows 10/11 doğrulaması ve SmartScreen davranışı.
+- [ ] (Sertifika gelince) Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161
+  servisiyle temiz ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz
+  Windows 10/11 doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.
 
 ## Dilim 6 — Fuzz ve bozuk mesaj matrisi
 
@@ -235,8 +247,9 @@ hassas çıktı sınırları ve minimal audit'i kapatır. Beşinci dilimin depen
 container, Windows release ve anti-rollback/build provenance kapıları kod/politika
 olarak tamamlandı. Altıncı dilimin fuzz ve durum makinesi matrisleri test kapsamında
 tamamdır. Faz 4 kabulü için gerçek Pi hedef-platform taramasının sıfır bulguyla
-geçmesi, gerçek EXE + katalog Authenticode/RFC3161 imzası ve temiz makine doğrulaması
-gerekir. Kriter bazında kanıt ve eksik girdiler
+geçmesi, GitHub'da derlenip attest edilmiş Windows adayının `verify-provenance`
+ile doğrulanması (depo sahibi kararı 2026-10-11; Authenticode/RFC3161 imzası
+sertifika gelince) ve temiz makine doğrulaması gerekir. Kriter bazında kanıt ve eksik girdiler
 [`docs/PHASE4_ACCEPTANCE.md`](PHASE4_ACCEPTANCE.md) altındadır.
 
 ## İkinci dilim tarihsel doğrulama özeti

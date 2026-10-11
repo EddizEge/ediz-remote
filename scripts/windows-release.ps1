@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('manifest', 'verify', 'sign')]
+    [ValidateSet('manifest', 'verify', 'sign', 'provenance', 'verify-provenance')]
     [string]$Command = 'verify',
 
     [string]$ArtifactPath,
@@ -10,17 +10,22 @@ param(
 
     [string]$CatalogPath,
 
+    [string]$ProvenancePath,
+
+    [string]$ChecksumsPath,
+
     [string]$BuildId
 )
 
 $ErrorActionPreference = 'Stop'
+$commandLabel = $Command.ToUpperInvariant().Replace('-', '_')
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     $pwsh = Get-Command 'pwsh.exe' -CommandType Application `
         -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($null -eq $pwsh) {
         [Console]::Error.WriteLine(
             ('WINDOWS_RELEASE_{0}_FAILED:powershell_version_unsupported' -f
-                $Command.ToUpperInvariant()))
+                $commandLabel))
         exit 1
     }
     $forwardArguments = @(
@@ -31,7 +36,13 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
         '-Command',
         $Command
     )
-    foreach ($name in @('ArtifactPath', 'ManifestPath', 'CatalogPath', 'BuildId')) {
+    foreach ($name in @(
+            'ArtifactPath',
+            'ManifestPath',
+            'CatalogPath',
+            'ProvenancePath',
+            'ChecksumsPath',
+            'BuildId')) {
         if ($PSBoundParameters.ContainsKey($name)) {
             $forwardArguments += @("-$name", [string]$PSBoundParameters[$name])
         }
@@ -58,6 +69,17 @@ if ([string]::IsNullOrWhiteSpace($CatalogPath)) {
     $CatalogPath = Join-Path `
         ([IO.Path]::GetDirectoryName($releaseDirectory)) `
         'EdizRemote.win-x64.cat'
+}
+# Provenance çıktıları katalog gibi `win-x64` klasörünün kardeşidir.
+$distributionDirectory = [IO.Path]::GetDirectoryName(
+    [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($ArtifactPath)))
+if ([string]::IsNullOrWhiteSpace($ProvenancePath)) {
+    $ProvenancePath = Join-Path $distributionDirectory `
+        'EdizRemote.win-x64.provenance.json'
+}
+if ([string]::IsNullOrWhiteSpace($ChecksumsPath)) {
+    $ChecksumsPath = Join-Path $distributionDirectory `
+        'EdizRemote.win-x64.SHA256SUMS'
 }
 if ([string]::IsNullOrWhiteSpace($BuildId)) {
     $BuildId = $env:EDIZ_REMOTE_BUILD_ID
@@ -113,11 +135,30 @@ try {
                 -CatalogPath $CatalogPath
             Write-Host 'WINDOWS_RELEASE_SIGN_AND_VERIFY_OK'
         }
+        'provenance' {
+            # İmzasız yayın: sign ile aynı kaynak/commit/sürüm/taban kapısı,
+            # ardından ağacın tamamı için provenance manifesti ve SHA256SUMS.
+            # Bütünlük kanıtı GitHub attestation ile tamamlanır.
+            Write-WindowsReleaseProvenance `
+                -ArtifactPath $ArtifactPath `
+                -ProvenancePath $ProvenancePath `
+                -ChecksumsPath $ChecksumsPath `
+                -RepositoryRoot $repositoryRoot `
+                -BuildId $BuildId | Out-Null
+            Write-Host 'WINDOWS_RELEASE_PROVENANCE_OK'
+        }
+        'verify-provenance' {
+            Invoke-WindowsProvenanceGate `
+                -ArtifactPath $ArtifactPath `
+                -ProvenancePath $ProvenancePath `
+                -ChecksumsPath $ChecksumsPath | Out-Null
+            Write-Host 'WINDOWS_RELEASE_PROVENANCE_VERIFY_OK'
+        }
     }
 }
 catch {
     $code = Get-WindowsReleaseErrorCode -Message $_.Exception.Message
     [Console]::Error.WriteLine(
-        ('WINDOWS_RELEASE_{0}_FAILED:{1}' -f $Command.ToUpperInvariant(), $code))
+        ('WINDOWS_RELEASE_{0}_FAILED:{1}' -f $commandLabel, $code))
     exit 1
 }

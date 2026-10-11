@@ -5,6 +5,13 @@ provenance'ını EXE'nin Windows sürüm kaynağına gömer. Üretim adayı ayr�
 adımda imzalanır ve fail-closed kapıdan geçirilir. Gerçek bir code signing
 sertifikası olmadan bu kapı başarı vermez.
 
+Depo sahibinin 2026-10-11 kararıyla sertifika gelene kadar yayınlar imzasız
+**provenance (GitHub attestation) yolu** ile çıkar: bütünlük ve kaynak, GitHub'da
+derlenen ağacın provenance manifesti, SHA256SUMS ve Sigstore SLSA build
+provenance attestation'ı ile doğrulanır; işletim sistemi düzeyinde yayıncı güveni
+yoktur. Ayrıntı [aşağıdaki bölümdedir](#provenance-github-attestation-yolu).
+Authenticode yolu değişmeden kalır.
+
 Akış PowerShell 7 gerektirir. NPM komutları Windows PowerShell 5.1 üzerinden
 başlatılsa bile script kurulu `pwsh.exe` sürecine argüman dizisiyle kendini tekrar
 başlatır; PowerShell 7 bulunamazsa sabit `powershell_version_unsupported` koduyla
@@ -97,8 +104,10 @@ sequence'ini okur ve küçük ya da eşit sequence taşıyan güncellemeyi uygul
 Güncelleyici henüz yoktur; bu dilim yalnız kimliği ve kapıyı hazırlar.
 
 Bu model tek geliştirici makinesinde kaynak provenance'ı sağlar; barındırılan,
-izole bir build platformu veya imzalı SLSA attestation'ı değildir. .NET SDK ve
-Node sürümleri commit'e sabitlenmez; production yayın kaydına ayrıca yazılmalıdır.
+izole bir build platformu veya imzalı SLSA attestation'ı değildir; bunu
+aşağıdaki provenance yolu GitHub-hosted build ve Sigstore SLSA attestation ile
+tamamlar. .NET SDK ve Node sürümleri commit'e sabitlenmez; production yayın
+kaydına ayrıca yazılmalıdır.
 
 ## Komutlar
 
@@ -182,12 +191,189 @@ seçer: [New-FileCatalog](https://learn.microsoft.com/en-us/powershell/module/mi
 [Test-FileCatalog](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/test-filecatalog),
 [SignTool](https://learn.microsoft.com/en-us/windows/win32/seccrypto/signtool).
 
+## Provenance (GitHub attestation) yolu
+
+Ücretli Authenticode sertifikası şimdilik yoktur (depo sahibi kararı,
+2026-10-11). Faz 4'ün "yayınlanan Windows binary'sinin bütünlüğü ve kaynağı
+doğrulanabilir" kriteri, GitHub Actions'ta derlenen EXE için **GitHub artifact
+attestation** (Sigstore, SLSA build provenance `https://slsa.dev/provenance/v1`)
+ve depoya ait provenance manifesti ile karşılanacaktır. Yukarıdaki Authenticode +
+katalog yolu aynen kalır, gevşetilmez; sertifika geldiğinde kullanılır.
+
+### Ne kanıtlar, ne kanıtlamaz
+
+Kanıtlar:
+
+- Dağıtılan `win-x64` ağacındaki her dosyanın yolu, boyutu ve SHA-256'sı
+  provenance manifestiyle birebir aynıdır; eksik, fazla veya değişmiş dosya yoktur.
+- EXE ve provenance manifesti `EddizEge/ediz-remote` deposunun `main` dalındaki,
+  manifestte yazan commit'ten `.github/workflows/windows-release.yml` workflow'u
+  tarafından GitHub-hosted runner üzerinde derlenip attest edilmiştir. Bu bilgi
+  Sigstore sertifikasındaki GitHub OIDC alanlarından gelir, workflow çıktısından
+  değil.
+- EXE'nin gömülü kimliği (sürüm, sequence, commit, temiz ağaç) manifestle aynıdır
+  ve sequence güvenilir anti-rollback tabanının altında değildir.
+
+Kanıtlamaz:
+
+- İşletim sistemi düzeyinde yayıncı güveni yoktur. EXE Authenticode imzasızdır
+  (`NotSigned`); Windows SmartScreen ilk çalıştırmada uyarı verir ve kullanıcının
+  "Ek bilgi → Yine de çalıştır" demesi gerekir. Bu, depo sahibinin 2026-10-11'de
+  kabul ettiği artık risktir ([`THREAT_MODEL.md` ER-T13](THREAT_MODEL.md)).
+- Windows attestation'ı kendiliğinden kontrol etmez. Doğrulama ancak indiren kişi
+  `gh attestation verify` veya `release:windows:verify-provenance` çalıştırırsa ya
+  da SHA-256'yı yayın sayfasıyla karşılaştırırsa yapılır.
+- GitHub hesabı veya `main` dalı ele geçirilirse saldırgan da geçerli attestation
+  üretebilir; branch koruması ve hesap güvenliği bu modelin parçasıdır.
+
+### Ön koşullar ve çıktılar
+
+`release:windows:provenance`, `release:windows:sign` ile aynı katılıkta ve dosya
+yazmadan önce şunları zorunlu tutar: `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE`
+(`release_floor_missing`/`release_floor_invalid`), temiz git ağacı ve `.dirty`
+taşımayan EXE (`provenance_dirty_source`), EXE commit'i = `HEAD`
+(`provenance_revision_mismatch`), kök `package.json` sürümü
+(`release_version_mismatch`), sequence ≥ 1 (`release_sequence_invalid`) ve taban
+(`release_rollback_rejected`). Yayın ağacı Authenticode yolunun
+`EdizRemote.release-manifest.json` dosyasını içeriyorsa iki mod karışmasın diye
+`provenance_mode_conflict` ile reddedilir. Ağaç kilidi (no-write/no-delete
+handle), reparse point, `..`, mutlak yol, büyük/küçük harf çakışması ve 8192
+dosya / 1024 klasör / 1 MiB yol bütçesi katalog yolundaki kontrollerle aynıdır;
+hash'ler hesaplanırken commit veya ağaç değişirse kayıt yazılmaz.
+
+Çıktılar `win-x64` klasörünün kardeşidir; manifest kendi özetini kapsamaz:
+
+| Dosya | İçerik |
+|---|---|
+| `artifacts/windows-desktop/EdizRemote.win-x64.provenance.json` | Strict şema `1`: `schemaVersion`, `product`, `integrity: "github-attestation"`, `buildId`, `release` (`version`, `sequence`), `source` (`repository: "EddizEge/ediz-remote"`, `revision`, `treeClean`), `attestation` (`predicateType`, `signerWorkflow`, `sourceRef`), `tree` (`root: "win-x64"`, `fileCount`, `totalBytes`, `files[]` = `path`, `sizeBytes`, küçük harf `sha256`) |
+| `artifacts/windows-desktop/EdizRemote.win-x64.SHA256SUMS` | `sha256sum -c` biçimi: `<küçük harf hex>  win-x64/<yol>` satırları, LF; provenance manifestinin özeti dahil değildir |
+
+Manifest kanonik bayt biçimindedir (PowerShell 7 JSON yazıcısı, LF, BOM'suz UTF-8,
+sonda tek LF; en fazla 4 MiB). Doğrulayıcı aynı biçimi yeniden üretip byte byte
+karşılaştırır; beklenmeyen/eksik alan, yinelenen anahtar, yeniden biçimlendirme,
+ordinal sırada olmayan veya normalize edilmemiş yol (`\`, `/` ile başlayan,
+sürücü, `.`/`..`, kontrol karakteri, nokta/boşluk soneki) reddedilir. Manifestteki
+`attestation` alanları yalnız beyandır; doğrulama politikası kodda sabittir ve
+manifest bu sabitlerden farklıysa reddedilir. Authenticode manifesti (şema 2) bu
+yolda, provenance manifesti Authenticode yolunda kabul edilmez. `desktop:publish`
+önceki pakete ait provenance ve SHA256SUMS dosyalarını siler; başarısız bir
+`provenance` koşusu geride çıktı bırakmaz.
+
+### Doğrulama
+
+`release:windows:verify-provenance` sırasıyla tabanı
+(`EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` zorunlu), yolları, ağaç kilidini, manifest
+şemasını ve kanonik baytlarını, ağaç ↔ manifest eşliğini
+(`provenance_tree_mismatch`), SHA256SUMS'un manifestten üretilen metinle birebir
+aynılığını (`provenance_checksums_invalid`), EXE `ProductVersion`/`FileVersion` ↔
+manifest kimliğini (`release_identity_mismatch`), temiz kaynağı ve tabanı
+doğrular. Ardından EXE ve provenance manifesti için ayrı ayrı şu çağrıyı argüman
+dizisiyle yapar:
+
+```powershell
+gh attestation verify <dosya> --repo EddizEge/ediz-remote `
+  --signer-workflow EddizEge/ediz-remote/.github/workflows/windows-release.yml `
+  --signer-digest <manifestteki commit> --source-ref refs/heads/main `
+  --source-digest <manifestteki commit> --predicate-type https://slsa.dev/provenance/v1 `
+  --cert-oidc-issuer https://token.actions.githubusercontent.com `
+  --deny-self-hosted-runners --format json
+```
+
+Çıkış kodu sıfır olmalıdır; JSON çıktısındaki her doğrulanmış attestation için
+`statement.predicateType`, dosyanın SHA-256'sını taşıyan `subject` ve sertifikanın
+`issuer`, `sourceRepositoryURI`, `sourceRepositoryDigest`, `sourceRepositoryRef`,
+`buildSignerURI`, `buildSignerDigest` ve `runnerEnvironment = github-hosted`
+alanları ayrıca kontrol edilir. Workflow tarafından değiştirilebilen
+`statement.predicate` güven kaynağı sayılmaz. `gh` bulunamazsa
+`provenance_tool_missing`, doğrulama düşerse `provenance_attestation_invalid`
+döner; `gh` stderr çıktısı loga aktarılmaz. `gh` yolu `EDIZ_REMOTE_GH_PATH` ile
+verilebilir (dosya adı `gh.exe`, yerel ve reparse içermeyen yol); verilmezse
+`PATH`'teki `gh.exe` kullanılır. Bayraklar ve JSON alan adları gh 2.96.0 ile
+gerçek bir public attestation üzerinde doğrulandı; bu bayrakları tanımayan eski
+gh sürümü fail-closed düşer. Çağrı `GH_TOKEN` veya `gh auth` oturumuyla GitHub
+API'sinden attestation'ları okur.
+
+```powershell
+git status --porcelain=v1 --untracked-files=all   # boş olmalı
+$env:EDIZ_REMOTE_RELEASE_SEQUENCE = '<önceki yayın + 1>'
+npm run desktop:publish
+$env:EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '<bu yayının sequence değeri>'
+npm run release:windows:provenance
+
+# İndirilen yayını doğrulama (artifacts/windows-desktop altında win-x64 +
+# provenance.json + SHA256SUMS):
+$env:EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '<bilinen en yüksek sequence>'
+npm run release:windows:verify-provenance
+```
+
+Başka bir klasör için `scripts/windows-release.ps1 verify-provenance -ArtifactPath
+<klasör>\win-x64\EdizRemote.exe` kullanılabilir; provenance ve SHA256SUMS yine
+`win-x64` klasörünün kardeşi olmalıdır (`-ProvenancePath`/`-ChecksumsPath` aynı
+kurala bağlıdır).
+
+Hata kodları: `provenance_path_invalid`, `provenance_manifest_invalid`,
+`provenance_manifest_too_large`, `provenance_mode_conflict`,
+`provenance_tree_mismatch`, `provenance_checksums_invalid`,
+`provenance_tool_missing`, `provenance_attestation_invalid`; ayrıca ortak
+`release_*`, `provenance_dirty_source`, `provenance_revision_mismatch`,
+`source_state_unavailable` ve `release_tree_*` kodları. Hata satırı
+`WINDOWS_RELEASE_PROVENANCE_FAILED:<kod>` veya
+`WINDOWS_RELEASE_VERIFY_PROVENANCE_FAILED:<kod>` biçimindedir; başarıda
+`WINDOWS_RELEASE_PROVENANCE_OK` ve `WINDOWS_RELEASE_PROVENANCE_VERIFY_OK` basılır.
+
+### CI akışı
+
+Workflow `.github/workflows/windows-release.yml` (`windows-release`) ayrı bir
+değişiklikte eklenir; sözleşme:
+
+1. `build` işi (Windows runner, yalnız `contents: read`, secret yok): checkout →
+   Node 22 → `npm ci` → testler/lint/build/audit → girdi sequence ile
+   `npm run desktop:publish` → aynı değer taban olarak
+   `npm run release:windows:provenance` → `artifacts/windows-desktop/` (win-x64 +
+   provenance.json + SHA256SUMS) `actions/upload-artifact` ile yüklenir.
+2. `release` işi (`needs: build`; `id-token: write`, `attestations: write`,
+   `contents: write`; npm/node bağımlılığı çalıştırmaz): artifact indirilir,
+   hash'ler SHA256SUMS'a karşı yeniden doğrulanır, `actions/attest-build-provenance`
+   ile EXE + provenance.json (+ SHA256SUMS) attest edilir, yalnız `scripts/` için
+   checkout yapılıp `npm run` kullanılmadan
+   `powershell -File scripts/windows-release.ps1 verify-provenance` (`GH_TOKEN` ile)
+   çalıştırılır ve `gh release create --draft` ile taslak yayın açılır. Yayını depo
+   sahibi elle yayımlar.
+
+### Yerel kanıt ve kalan iş
+
+2026-10-11: release politika/katalog/provenance testleri 234/234 geçti (123'ü
+provenance; gerçek `gh` veya ağ kullanılmaz, attestation çağrısı enjekte edilir).
+Kasıtlı mutasyonlar (ağaç hash karşılaştırması, fazla dosya reddi, attestation
+çıkış kodu) testte düştü. Temiz ağaçta `3091505` commit'inden sequence `1` ile
+publish edilen gerçek aday (`184859904` bayt, SHA-256
+`B76FC9718E2AAB877552E8261850CBC834AAD4EB70251B1C08E7366F632D3554`,
+`ProductVersion 0.1.0+30915050ca8dcdc1efc82bc0f6d7933f21ede0a8`,
+`FileVersion 0.1.0.1`, `NotSigned`) için `provenance` 12 dosyalık manifest ve
+SHA256SUMS üretti; yeniden üretim aynı baytları verdi, `sha256sum -c` geçti.
+Tabansız koşu `release_floor_missing`, izlenmeyen dosyalı ağaç
+`provenance_dirty_source` (çıktı bırakmadan) ile kapandı. `verify-provenance`
+yerelde attestation olmadığı için beklenen `provenance_attestation_invalid`,
+`gh` yolu yokken `provenance_tool_missing`, taban 2 ile
+`release_rollback_rejected`, değiştirilmiş veya fazla dosyada
+`provenance_tree_mismatch` verdi. Aynı ağaçta Authenticode `verify`
+`catalog_missing` ile kapanmaya devam eder.
+
+Kalan: ilk GitHub `windows-release` koşusu, gerçek attestation ile
+`verify-provenance` başarısı ve temiz Windows 10/11 makinesinde indirme +
+doğrulama + SmartScreen davranışı kanıtı. Bunlar alınmadan kriter karşılanmış
+sayılmaz.
+
 ## Dağıtım ve kalan production engeli
 
 Dağıtım birimi `win-x64` klasörü ile kardeş `EdizRemote.win-x64.cat` dosyasının
 birlikte taşınmasıdır; klasör içeriği yeniden paketlenirken hiçbir dosya eklenmemeli,
 silinmemeli veya değiştirilmemelidir. Kapı katalogu Windows catalog database'e
 kaydetmez ve sistem durumuna güvenmez; açık katalog yolu üzerinden doğrular.
+
+Provenance yolunda dağıtım birimi `win-x64` klasörü ile kardeş
+`EdizRemote.win-x64.provenance.json` ve `EdizRemote.win-x64.SHA256SUMS`
+dosyalarıdır; GitHub yayınında attestation'lar depoya bağlı olarak saklanır.
 
 Mevcut proje adayında gerçek code signing sertifikası yoktur ve Authenticode
 durumu `NotSigned`dır. İmzalı katalog üretme, doğrulama ve anti-rollback/build

@@ -209,6 +209,8 @@ npm run desktop:publish
 npm run release:windows:manifest
 npm run release:windows:sign
 npm run release:windows:verify
+npm run release:windows:provenance
+npm run release:windows:verify-provenance
 ```
 
 Çift tıklanabilir self-contained uygulama
@@ -220,6 +222,12 @@ aday bu kapıdan geçmez. `desktop:publish` kök `package.json` sürümünü, `H
 commit'ini, ağaç temizliğini ve `EDIZ_REMOTE_RELEASE_SEQUENCE` değerini (verilmezse
 `0`) EXE sürüm kaynağına gömer; kirli ağaç veya sequence `0` geliştirme paketidir
 ve release kapısı onu anti-rollback/provenance kontrolünde reddeder.
+Sertifika gelene kadar (depo sahibi kararı, 2026-10-11) yayınlar imzasız
+provenance yoluyla çıkar: `release:windows:provenance` ağacın tamamı için
+`artifacts/windows-desktop/EdizRemote.win-x64.provenance.json` ve
+`EdizRemote.win-x64.SHA256SUMS` üretir, `release:windows:verify-provenance`
+bunları ve GitHub artifact attestation'ını (`gh attestation verify`) doğrular.
+Ayrıntı `docs/WINDOWS_RELEASE.md` dosyasındadır; SmartScreen uyarısı kalır.
 
 2026-08-23 final Faz 3 artifact'i `184540144` bayttır; zaman damgası
 `2026-08-23 22:59:29 +03`, SHA-256 değeri
@@ -308,6 +316,19 @@ sequence `0`dır. Şema v2 manifest SHA-256
 Authenticode `NotSigned`, katalog yok; `release:windows:verify` `catalog_missing`,
 tabansız `sign` `release_floor_missing`, tabanlı `sign` imza denemeden
 `provenance_dirty_source` ile kapanır. Fiziksel EXE smoke çalıştırılmadı.
+
+2026-10-11 provenance yolu: release politika/katalog/provenance testleri
+234/234 geçti, toplu `npm test` 576 başarılı + 1 atlanan ve lint temiz kaldı.
+Temiz ağaçta `3091505` commit'inden `EDIZ_REMOTE_RELEASE_SEQUENCE=1` ile
+publish edilen yerel aday `184859904` bayt, SHA-256
+`B76FC9718E2AAB877552E8261850CBC834AAD4EB70251B1C08E7366F632D3554`,
+`ProductVersion 0.1.0+30915050ca8dcdc1efc82bc0f6d7933f21ede0a8`,
+`FileVersion 0.1.0.1`, Authenticode `NotSigned`. `release:windows:provenance`
+12 dosyalık manifest (SHA-256
+`5F3B83E89629CADCE268B7B7138A76CA36ECC3D467788C6A6FD71AC2D4803777`) ve
+SHA256SUMS üretti; `verify-provenance` yerel attestation olmadığı için beklenen
+`provenance_attestation_invalid` ile kapandı. Bu aday GitHub'da derlenmediği için
+yayın adayı değildir.
 
 ## Raspberry Pi 5 kurulumu
 
@@ -409,7 +430,7 @@ docs/PROTOCOL.md          Sinyalleşme protokolü ve güvenlik kuralları
 docs/THREAT_MODEL.md      Faz 4 tehdit kaydı, veri sınıfları ve güven sınırları
 docs/SECURITY_AUDIT.md    Minimal audit şeması, saklama ve anahtar yönetimi
 docs/CONTAINER_RELEASE.md Digest, SBOM ve container release kapısı
-docs/WINDOWS_RELEASE.md   EXE + tüm win-x64 ağacı için imzalı SHA-256 katalog kapısı
+docs/WINDOWS_RELEASE.md   İmzalı SHA-256 katalog ve GitHub attestation provenance kapıları
 docs/PHASE4_PLAN.md       Faz 4 dilimleri ve açık güvenlik işleri
 ```
 
@@ -436,7 +457,9 @@ signer, timestamp, iki ayrı `signtool /pa /all /v /tw` ve
 `Test-FileCatalog=Valid/SHA256` zorunludur. Politika/katalog testleri 31/31 geçti.
 Bu amd64 kanıtı Pi `linux/arm64` deployment'ının veya gerçek sertifikalı imzanın
 yerine geçmez; production kabulü için Pi'de sıfır bulgulu scan/deploy smoke ile
-gerçek imzalı EXE+katalog ve temiz Windows 10/11 kanıtı gerekir.
+GitHub'da derlenip attest edilmiş Windows adayının `verify-provenance` kanıtı
+(sertifika gelene kadar imzasız provenance yolu, 2026-10-11 kararı) ve temiz
+Windows 10/11 kanıtı gerekir.
 Wire v1/v2 adayları ile alt protokol teklif
 etmeyen daha eski EXE'ler wire v3 sunucuyla bilinçli olarak uyumlu değildir;
 production deployment yeni web, signaling ve Windows paketi birlikte

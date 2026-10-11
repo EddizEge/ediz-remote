@@ -159,6 +159,75 @@ function Invoke-FixtureGit {
     return $output
 }
 
+# `gh attestation verify --format json` çıktısının doğrulayıcının okuduğu alt
+# kümesi; alan adları gh 2.96.0'ın gerçek çıktısıyla aynıdır.
+function New-AttestationEntry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Sha256,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Revision,
+
+        [hashtable]$CertificateOverrides = @{},
+
+        [string]$PredicateType = 'https://slsa.dev/provenance/v1'
+    )
+
+    $certificate = [ordered]@{
+        issuer = 'https://token.actions.githubusercontent.com'
+        sourceRepositoryURI = 'https://github.com/EddizEge/ediz-remote'
+        sourceRepositoryDigest = $Revision
+        sourceRepositoryRef = 'refs/heads/main'
+        buildSignerURI = 'https://github.com/EddizEge/ediz-remote/.github/workflows/windows-release.yml@refs/heads/main'
+        buildSignerDigest = $Revision
+        runnerEnvironment = 'github-hosted'
+    }
+    foreach ($key in @($CertificateOverrides.Keys)) {
+        if ($null -eq $CertificateOverrides[$key]) {
+            $certificate.Remove($key)
+        }
+        else {
+            $certificate[$key] = $CertificateOverrides[$key]
+        }
+    }
+    return [ordered]@{
+        attestation = [ordered]@{ bundle = 'fixture' }
+        verificationResult = [ordered]@{
+            mediaType = 'application/vnd.dev.sigstore.verificationresult+json;version=0.1'
+            signature = [ordered]@{ certificate = $certificate }
+            statement = [ordered]@{
+                _type = 'https://in-toto.io/Statement/v1'
+                subject = @(
+                    [ordered]@{
+                        name = 'fixture'
+                        digest = [ordered]@{ sha256 = $Sha256 }
+                    }
+                )
+                predicateType = $PredicateType
+            }
+        }
+    }
+}
+
+function ConvertTo-AttestationOutput {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Entries
+    )
+
+    return ConvertTo-Json -InputObject $Entries -Depth 12
+}
+
+function Get-LowerSha256 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+
 $testRoot = Join-Path `
     ([IO.Path]::GetTempPath()) `
     ('EdizRemote.ReleaseTests.{0}' -f [guid]::NewGuid().ToString('N'))
@@ -918,6 +987,656 @@ try {
             -ArtifactPath $artifactPath `
             -ManifestPath $manifestPath | Out-Null
     }
+
+    # --- Provenance (GitHub attestation) modu ---
+    $provenanceBase = Join-Path $testRoot 'provenance'
+    $provenanceRoot = Join-Path $provenanceBase 'win-x64'
+    $provenanceArtifact = Join-Path $provenanceRoot 'EdizRemote.exe'
+    $provenancePath = Join-Path $provenanceBase 'EdizRemote.win-x64.provenance.json'
+    $checksumsPath = Join-Path $provenanceBase 'EdizRemote.win-x64.SHA256SUMS'
+    New-Item -ItemType Directory -Path (Join-Path $provenanceRoot 'web\assets') | Out-Null
+    $provenanceBytes = New-VersionedPeBytes `
+        -FileVersion '0.1.0.7' `
+        -InformationalVersion "0.1.0+$sourceRevision"
+    [IO.File]::WriteAllBytes($provenanceArtifact, $provenanceBytes)
+    $provenanceAsset = Join-Path $provenanceRoot 'web\assets\main.js'
+    [IO.File]::WriteAllText($provenanceAsset, 'release-asset', $utf8)
+    [IO.File]::WriteAllText(
+        (Join-Path $provenanceRoot 'ediz-remote.settings.json'),
+        '{}',
+        $utf8)
+    $provenanceEmpty = Join-Path $provenanceRoot 'empty.txt'
+    [IO.File]::WriteAllBytes($provenanceEmpty, [byte[]]@())
+
+    function Write-FixtureProvenance {
+        param([System.Collections.IDictionary]$Environment = $floorSeven)
+
+        return Write-WindowsReleaseProvenance `
+            -ArtifactPath $provenanceArtifact `
+            -ProvenancePath $provenancePath `
+            -ChecksumsPath $checksumsPath `
+            -RepositoryRoot $sourceRoot `
+            -BuildId 'ediz-remote@test' `
+            -Environment $Environment
+    }
+
+    function Invoke-FixtureProvenanceGate {
+        param(
+            [System.Collections.IDictionary]$Environment = $floorSeven,
+            [scriptblock]$Invoker = $passingInvoker
+        )
+
+        return Invoke-WindowsProvenanceGate `
+            -ArtifactPath $provenanceArtifact `
+            -ProvenancePath $provenancePath `
+            -ChecksumsPath $checksumsPath `
+            -Environment $Environment `
+            -AttestationInvoker $Invoker
+    }
+
+    Write-FixtureProvenance | Out-Null
+    $provenanceText = [IO.File]::ReadAllText($provenancePath, $utf8)
+    $provenanceDocument = $provenanceText | ConvertFrom-Json
+    Assert-Equal -Expected 1 -Actual ([int]$provenanceDocument.schemaVersion)
+    Assert-Equal -Expected 'github-attestation' -Actual $provenanceDocument.integrity
+    Assert-Equal -Expected '0.1.0' -Actual $provenanceDocument.release.version
+    Assert-Equal -Expected 7 -Actual ([int]$provenanceDocument.release.sequence)
+    Assert-Equal -Expected 'EddizEge/ediz-remote' -Actual $provenanceDocument.source.repository
+    Assert-Equal -Expected $sourceRevision -Actual $provenanceDocument.source.revision
+    Assert-Equal -Expected $true -Actual $provenanceDocument.source.treeClean
+    Assert-Equal `
+        -Expected 'EddizEge/ediz-remote/.github/workflows/windows-release.yml' `
+        -Actual $provenanceDocument.attestation.signerWorkflow
+    Assert-Equal -Expected 'refs/heads/main' -Actual $provenanceDocument.attestation.sourceRef
+    Assert-Equal -Expected 'win-x64' -Actual $provenanceDocument.tree.root
+    Assert-Equal -Expected 4 -Actual ([int]$provenanceDocument.tree.fileCount)
+    Assert-Equal `
+        -Expected 'EdizRemote.exe|ediz-remote.settings.json|empty.txt|web/assets/main.js' `
+        -Actual ([string]::Join('|', @($provenanceDocument.tree.files | ForEach-Object { $_.path })))
+    Assert-Equal `
+        -Expected ([int64]$provenanceBytes.Length + 2 + 13) `
+        -Actual ([int64]$provenanceDocument.tree.totalBytes)
+    Assert-Equal -Expected $false -Actual $provenanceText.Contains("`r")
+    $script:TestCount += 1
+
+    $artifactSha = Get-LowerSha256 -Path $provenanceArtifact
+    $expectedChecksums = [string]::Join('', @(
+            "$artifactSha  win-x64/EdizRemote.exe`n",
+            "$(Get-LowerSha256 -Path (Join-Path $provenanceRoot 'ediz-remote.settings.json'))  win-x64/ediz-remote.settings.json`n",
+            "$(Get-LowerSha256 -Path $provenanceEmpty)  win-x64/empty.txt`n",
+            "$(Get-LowerSha256 -Path $provenanceAsset)  win-x64/web/assets/main.js`n"))
+    $checksumsText = [IO.File]::ReadAllText($checksumsPath, $utf8)
+    Assert-Equal -Expected $expectedChecksums -Actual $checksumsText
+    Assert-Equal -Expected $false -Actual $checksumsText.Contains('provenance')
+    Assert-Equal -Expected $artifactSha -Actual @($provenanceDocument.tree.files)[0].sha256
+    $script:TestCount += 1
+
+    $provenanceTextBytes = [IO.File]::ReadAllBytes($provenancePath)
+    $checksumsBytes = [IO.File]::ReadAllBytes($checksumsPath)
+    Write-FixtureProvenance | Out-Null
+    Assert-Equal `
+        -Expected ([Convert]::ToBase64String($provenanceTextBytes)) `
+        -Actual ([Convert]::ToBase64String([IO.File]::ReadAllBytes($provenancePath)))
+    Assert-Equal `
+        -Expected ([Convert]::ToBase64String($checksumsBytes)) `
+        -Actual ([Convert]::ToBase64String([IO.File]::ReadAllBytes($checksumsPath)))
+    $script:TestCount += 1
+
+    Assert-WindowsProvenanceDocumentObject -Document $provenanceDocument
+    $script:TestCount += 1
+
+    # Kapı: attestation çağrısı enjekte edilir; argüman dizisi kaydedilir.
+    $provenanceSha = Get-LowerSha256 -Path $provenancePath
+    $script:AttestationCalls = [Collections.Generic.List[string]]::new()
+    $passingInvoker = {
+        param([string[]]$Arguments)
+
+        $script:AttestationCalls.Add([string]::Join("`n", $Arguments))
+        $digest = $provenanceSha
+        if ($Arguments[2] -eq $provenanceArtifact) {
+            $digest = $artifactSha
+        }
+        return [PSCustomObject]@{
+            ExitCode = 0
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $digest -Revision $sourceRevision))
+        }
+    }
+    $gateDocument = Invoke-FixtureProvenanceGate
+    Assert-Equal -Expected $sourceRevision -Actual $gateDocument.source.revision
+    Assert-Equal -Expected 2 -Actual $script:AttestationCalls.Count
+    $expectedAttestationTail = [string]::Join("`n", @(
+            '--repo', 'EddizEge/ediz-remote',
+            '--signer-workflow', 'EddizEge/ediz-remote/.github/workflows/windows-release.yml',
+            '--signer-digest', $sourceRevision,
+            '--source-ref', 'refs/heads/main',
+            '--source-digest', $sourceRevision,
+            '--predicate-type', 'https://slsa.dev/provenance/v1',
+            '--cert-oidc-issuer', 'https://token.actions.githubusercontent.com',
+            '--deny-self-hosted-runners',
+            '--format', 'json'))
+    Assert-Equal `
+        -Expected "attestation`nverify`n$provenanceArtifact`n$expectedAttestationTail" `
+        -Actual $script:AttestationCalls[0]
+    Assert-Equal `
+        -Expected "attestation`nverify`n$provenancePath`n$expectedAttestationTail" `
+        -Actual $script:AttestationCalls[1]
+    $script:TestCount += 1
+
+    Assert-ThrowsCode -ExpectedCode 'release_floor_missing' -Action {
+        Invoke-FixtureProvenanceGate -Environment @{} | Out-Null
+    }
+    Assert-ThrowsCode -ExpectedCode 'release_floor_invalid' -Action {
+        Invoke-FixtureProvenanceGate -Environment @{
+            EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '0'
+        } | Out-Null
+    }
+    Assert-ThrowsCode -ExpectedCode 'release_rollback_rejected' -Action {
+        Invoke-FixtureProvenanceGate -Environment @{
+            EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '8'
+        } | Out-Null
+    }
+
+    # Attestation çağrısı: çıkış kodu, araç eksikliği ve beklenmeyen sonuç.
+    $failingInvoker = {
+        param([string[]]$Arguments)
+        return [PSCustomObject]@{
+            ExitCode = 1
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision))
+        }
+    }
+    $invokerCases = @(
+        @{ Code = 'provenance_attestation_invalid'; Invoker = $failingInvoker },
+        @{ Code = 'provenance_tool_missing'; Invoker = { throw 'provenance_tool_missing' } },
+        @{ Code = 'provenance_attestation_invalid'; Invoker = { throw 'unexpected' } },
+        @{ Code = 'provenance_attestation_invalid'; Invoker = { $null } },
+        @{
+            Code = 'provenance_attestation_invalid'
+            Invoker = {
+                [PSCustomObject]@{ ExitCode = 0; Output = '[]' }
+                [PSCustomObject]@{ ExitCode = 0; Output = '[]' }
+            }
+        },
+        @{
+            Code = 'provenance_attestation_invalid'
+            Invoker = { [PSCustomObject]@{ ExitCode = '0'; Output = '[]' } }
+        },
+        @{
+            # Yalnız EXE için geçerli bir attestation; provenance.json düşer.
+            Code = 'provenance_attestation_invalid'
+            Invoker = {
+                param([string[]]$Arguments)
+                [PSCustomObject]@{
+                    ExitCode = 0
+                    Output = ConvertTo-AttestationOutput -Entries @(
+                        (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision))
+                }
+            }
+        }
+    )
+    foreach ($case in $invokerCases) {
+        Assert-ThrowsCode -ExpectedCode $case.Code -Action {
+            Invoke-FixtureProvenanceGate -Invoker $case.Invoker | Out-Null
+        }
+    }
+
+    # Gerçek `gh` çözümlemesi: ağ/`gh` gerektirmeden fail-closed.
+    $notGhPath = Join-Path $testRoot 'not-gh.exe'
+    [IO.File]::WriteAllBytes($notGhPath, [byte[]](1))
+    foreach ($ghPath in @((Join-Path $testRoot 'missing\gh.exe'), $notGhPath)) {
+        Assert-ThrowsCode -ExpectedCode 'provenance_tool_missing' -Action {
+            Invoke-WindowsProvenanceGate `
+                -ArtifactPath $provenanceArtifact `
+                -ProvenancePath $provenancePath `
+                -ChecksumsPath $checksumsPath `
+                -Environment @{
+                    EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '7'
+                    EDIZ_REMOTE_GH_PATH = $ghPath
+                } | Out-Null
+        }
+    }
+
+    # Ağaç ↔ manifest: içerik, fazla/eksik dosya, EXE ve reparse point.
+    [IO.File]::WriteAllText($provenanceAsset, 'release-assex', $utf8)
+    Assert-ThrowsCode -ExpectedCode 'provenance_tree_mismatch' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllText($provenanceAsset, 'release-asset!', $utf8)
+    Assert-ThrowsCode -ExpectedCode 'provenance_tree_mismatch' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllText($provenanceAsset, 'release-asset', $utf8)
+
+    $provenanceExtra = Join-Path $provenanceRoot 'web\extra.dll'
+    [IO.File]::WriteAllBytes($provenanceExtra, [byte[]](9, 9, 9))
+    Assert-ThrowsCode -ExpectedCode 'provenance_tree_mismatch' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    Remove-Item -LiteralPath $provenanceExtra -Force
+
+    Remove-Item -LiteralPath $provenanceEmpty -Force
+    Assert-ThrowsCode -ExpectedCode 'provenance_tree_mismatch' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllBytes($provenanceEmpty, [byte[]]@())
+
+    $tamperedProvenanceBytes = [byte[]]$provenanceBytes.Clone()
+    $tamperedProvenanceBytes[$tamperedProvenanceBytes.Length - 1] =
+        $tamperedProvenanceBytes[$tamperedProvenanceBytes.Length - 1] -bxor 0xFF
+    [IO.File]::WriteAllBytes($provenanceArtifact, $tamperedProvenanceBytes)
+    Assert-ThrowsCode -ExpectedCode 'provenance_tree_mismatch' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllBytes($provenanceArtifact, $provenanceBytes)
+
+    $junctionTarget = Join-Path $testRoot 'junction-target'
+    New-Item -ItemType Directory -Path $junctionTarget | Out-Null
+    $junctionPath = Join-Path $provenanceRoot 'linked'
+    New-Item -ItemType Junction -Path $junctionPath -Target $junctionTarget | Out-Null
+    Assert-ThrowsCode -ExpectedCode 'release_tree_invalid' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    Assert-ThrowsCode -ExpectedCode 'release_tree_invalid' -Action {
+        Write-FixtureProvenance | Out-Null
+    }
+    [IO.Directory]::Delete($junctionPath)
+    Write-FixtureProvenance | Out-Null
+
+    # İki bütünlük modu karışmaz.
+    $inTreeAuthenticodeManifest = Join-Path $provenanceRoot 'EdizRemote.release-manifest.json'
+    [IO.File]::WriteAllBytes($inTreeAuthenticodeManifest, $firstManifestBytes)
+    Assert-ThrowsCode -ExpectedCode 'provenance_mode_conflict' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    Assert-ThrowsCode -ExpectedCode 'provenance_mode_conflict' -Action {
+        Write-FixtureProvenance | Out-Null
+    }
+    Remove-Item -LiteralPath $inTreeAuthenticodeManifest -Force
+    Write-FixtureProvenance | Out-Null
+
+    [IO.File]::WriteAllBytes($provenancePath, $firstManifestBytes)
+    Assert-ThrowsCode -ExpectedCode 'provenance_manifest_invalid' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllBytes($provenancePath, $provenanceTextBytes)
+    Assert-ThrowsCode -ExpectedCode 'provenance_manifest_invalid' -Action {
+        Assert-WindowsProvenanceDocumentObject -Document $manifest
+    }
+    Assert-ThrowsCode -ExpectedCode 'manifest_schema_invalid' -Action {
+        Assert-WindowsReleaseManifestObject -Manifest $provenanceDocument
+    }
+    [IO.File]::WriteAllBytes($manifestPath, $provenanceTextBytes)
+    Assert-ThrowsCode -ExpectedCode 'manifest_schema_invalid' -Action {
+        Read-WindowsReleaseManifest `
+            -ArtifactPath $artifactPath `
+            -ManifestPath $manifestPath | Out-Null
+    }
+    [IO.File]::WriteAllBytes($manifestPath, $firstManifestBytes)
+
+    # Kanonik bayt biçimi, boyut sınırı ve UTF-8.
+    $canonicalCases = @(
+        @{
+            Code = 'provenance_manifest_invalid'
+            Bytes = $utf8.GetBytes(($provenanceDocument | ConvertTo-Json -Depth 8 -Compress) + "`n")
+        },
+        @{
+            Code = 'provenance_manifest_invalid'
+            Bytes = [byte[]](@(0xEF, 0xBB, 0xBF) + $provenanceTextBytes)
+        },
+        @{
+            Code = 'provenance_manifest_invalid'
+            Bytes = $utf8.GetBytes($provenanceText.Replace("`n", "`r`n"))
+        },
+        @{
+            Code = 'provenance_manifest_invalid'
+            Bytes = $utf8.GetBytes($provenanceText.Replace(
+                    '"product": "Ediz Remote",',
+                    "`"product`": `"Ediz Remote`",`n  `"product`": `"Ediz Remote`","))
+        },
+        @{
+            Code = 'provenance_manifest_invalid'
+            Bytes = [byte[]](0xC3, 0x28)
+        },
+        @{
+            Code = 'provenance_manifest_too_large'
+            Bytes = [byte[]]::new(4194305)
+        }
+    )
+    foreach ($case in $canonicalCases) {
+        [IO.File]::WriteAllBytes($provenancePath, $case.Bytes)
+        Assert-ThrowsCode -ExpectedCode $case.Code -Action {
+            Invoke-FixtureProvenanceGate | Out-Null
+        }
+    }
+    Remove-Item -LiteralPath $provenancePath -Force
+    Assert-ThrowsCode -ExpectedCode 'provenance_manifest_invalid' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllBytes($provenancePath, $provenanceTextBytes)
+
+    $checksumsCases = @(
+        $checksumsText.ToUpperInvariant(),
+        ($checksumsText + "$provenanceSha  EdizRemote.win-x64.provenance.json`n"),
+        $checksumsText.Replace("`n", "`r`n"),
+        $checksumsText.Substring(0, $checksumsText.Length - 1),
+        $checksumsText.Replace('  win-x64/', ' *win-x64/')
+    )
+    foreach ($case in $checksumsCases) {
+        [IO.File]::WriteAllText($checksumsPath, $case, $utf8)
+        Assert-ThrowsCode -ExpectedCode 'provenance_checksums_invalid' -Action {
+            Invoke-FixtureProvenanceGate | Out-Null
+        }
+    }
+    Remove-Item -LiteralPath $checksumsPath -Force
+    Assert-ThrowsCode -ExpectedCode 'provenance_checksums_invalid' -Action {
+        Invoke-FixtureProvenanceGate | Out-Null
+    }
+    [IO.File]::WriteAllBytes($checksumsPath, $checksumsBytes)
+
+    # Kimlik: manifest ve SHA256SUMS kendi içinde tutarlı olsa da EXE sürüm
+    # kaynağıyla uyuşmalıdır.
+    function Write-CraftedProvenance {
+        param(
+            [Parameter(Mandatory = $true)]
+            [byte[]]$ArtifactBytes,
+
+            [Parameter(Mandatory = $true)]
+            [scriptblock]$Mutation
+        )
+
+        [IO.File]::WriteAllBytes($provenanceArtifact, $ArtifactBytes)
+        $crafted = Copy-ManifestObject -Manifest $provenanceDocument
+        $craftedFiles = @($crafted.tree.files)
+        $craftedFiles[0].sizeBytes = [int64]$ArtifactBytes.Length
+        $craftedFiles[0].sha256 = Get-LowerSha256 -Path $provenanceArtifact
+        $crafted.tree.totalBytes = [int64]0
+        foreach ($craftedFile in $craftedFiles) {
+            $crafted.tree.totalBytes += [int64]$craftedFile.sizeBytes
+        }
+        & $Mutation $crafted
+        [IO.File]::WriteAllText(
+            $provenancePath,
+            (ConvertTo-WindowsProvenanceJson -Document $crafted),
+            $utf8)
+        [IO.File]::WriteAllText(
+            $checksumsPath,
+            (Get-WindowsProvenanceChecksumsText -Document $crafted),
+            $utf8)
+    }
+
+    $identityCases = @(
+        @{
+            Code = 'release_identity_mismatch'
+            Bytes = $provenanceBytes
+            Mutation = { param($d) $d.release.sequence = 8 }
+        },
+        @{
+            Code = 'release_identity_mismatch'
+            Bytes = $provenanceBytes
+            Mutation = { param($d) $d.release.version = '0.1.1' }
+        },
+        @{
+            Code = 'release_identity_mismatch'
+            Bytes = $provenanceBytes
+            Mutation = { param($d) $d.source.revision = $fixtureRevision }
+        },
+        @{
+            Code = 'release_identity_mismatch'
+            Bytes = $provenanceBytes
+            Mutation = { param($d) $d.source.treeClean = $false }
+        },
+        @{
+            Code = 'provenance_dirty_source'
+            Bytes = (New-VersionedPeBytes `
+                    -FileVersion '0.1.0.7' `
+                    -InformationalVersion "0.1.0+$sourceRevision.dirty")
+            Mutation = { param($d) $d.source.treeClean = $false }
+        },
+        @{
+            Code = 'release_sequence_invalid'
+            Bytes = (New-VersionedPeBytes `
+                    -FileVersion '0.1.0.0' `
+                    -InformationalVersion "0.1.0+$sourceRevision")
+            Mutation = { param($d) $d.release.sequence = 0 }
+        }
+    )
+    foreach ($case in $identityCases) {
+        Write-CraftedProvenance -ArtifactBytes $case.Bytes -Mutation $case.Mutation
+        Assert-ThrowsCode -ExpectedCode $case.Code -Action {
+            Invoke-FixtureProvenanceGate | Out-Null
+        }
+    }
+    [IO.File]::WriteAllBytes($provenanceArtifact, $provenanceBytes)
+    [IO.File]::WriteAllBytes($provenancePath, $provenanceTextBytes)
+    [IO.File]::WriteAllBytes($checksumsPath, $checksumsBytes)
+    Invoke-FixtureProvenanceGate | Out-Null
+    $script:TestCount += 1
+
+    # Strict provenance şeması.
+    $provenanceSchemaMutations = @(
+        { param($d) $d | Add-Member -NotePropertyName secret -NotePropertyValue 'x' },
+        { param($d) $d.PSObject.Properties.Remove('attestation') },
+        { param($d) $d.integrity = 'authenticode' },
+        { param($d) $d.schemaVersion = 2 },
+        { param($d) $d.schemaVersion = '1' },
+        { param($d) $d.product = 'Other' },
+        { param($d) $d.buildId = 'bad build' },
+        { param($d) $d.release.sequence = 7.5 },
+        { param($d) $d.release.version = '0.1' },
+        { param($d) $d.source.repository = 'other/ediz-remote' },
+        { param($d) $d.source.revision = $sourceRevision.ToUpperInvariant() },
+        { param($d) $d.source.treeClean = 'true' },
+        { param($d) $d.attestation.signerWorkflow = 'EddizEge/ediz-remote/.github/workflows/other.yml' },
+        { param($d) $d.attestation.sourceRef = 'refs/heads/dev' },
+        { param($d) $d.attestation.predicateType = 'https://slsa.dev/provenance/v0.2' },
+        { param($d) $d.tree.root = 'win-arm64' },
+        { param($d) $d.tree.files[3].path = '../escape.txt' },
+        { param($d) $d.tree.files[3].path = 'web\assets\main.js' },
+        { param($d) $d.tree.files[3].path = '/web/assets/main.js' },
+        { param($d) $d.tree.files[3].path = 'web/C:/main.js' },
+        { param($d) $d.tree.files[3].path = 'web/./assets/main.js' },
+        { param($d) $d.tree.files[3].path = 'web/assets/main.js.' },
+        { param($d) $d.tree.files[3].path = "web/assets/ma`tin.js" },
+        { param($d) $d.tree.files[3].path = 'web//main.js' },
+        { param($d) $d.tree.files[1].path = 'EdizRemote.exe' },
+        { param($d) $d.tree.files[1].path = 'edizremote.exe' },
+        { param($d) $d.tree.files[1].path = 'EdizRemote.release-manifest.json' },
+        { param($d) $first = $d.tree.files[2]; $d.tree.files[2] = $d.tree.files[3]; $d.tree.files[3] = $first },
+        { param($d) $d.tree.files[0].sha256 = $d.tree.files[0].sha256.ToUpperInvariant() },
+        { param($d) $d.tree.files[0].sha256 = 'a' * 63 },
+        { param($d) $d.tree.files[2].sizeBytes = '0' },
+        { param($d) $d.tree.files[2].sizeBytes = -1 },
+        { param($d) $d.tree.files[2] | Add-Member -NotePropertyName mode -NotePropertyValue 'x' },
+        { param($d) $d.tree.fileCount = 5 },
+        { param($d) $d.tree.totalBytes = [int64]$d.tree.totalBytes + 1 },
+        { param($d) $d.tree.files = @() },
+        { param($d) $d.tree.files = $d.tree.files[0] },
+        {
+            param($d)
+            $exeSize = [int64]$d.tree.files[0].sizeBytes
+            $d.tree.files = @($d.tree.files[1], $d.tree.files[2], $d.tree.files[3])
+            $d.tree.fileCount = 3
+            $d.tree.totalBytes = [int64]$d.tree.totalBytes - $exeSize
+        }
+    )
+    foreach ($mutation in $provenanceSchemaMutations) {
+        $mutated = Copy-ManifestObject -Manifest $provenanceDocument
+        & $mutation $mutated
+        Assert-ThrowsCode -ExpectedCode 'provenance_manifest_invalid' -Action {
+            Assert-WindowsProvenanceDocumentObject -Document $mutated
+        }
+    }
+
+    # Attestation sonuç politikası (gh JSON çıktısı).
+    $validAttestation = ConvertTo-AttestationOutput -Entries @(
+        (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision))
+    Assert-WindowsAttestationResult `
+        -ExitCode 0 `
+        -Output $validAttestation `
+        -FileSha256 $artifactSha `
+        -SourceRevision $sourceRevision
+    Assert-WindowsAttestationResult `
+        -ExitCode 0 `
+        -Output (ConvertTo-AttestationOutput -Entries @(
+            (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision -CertificateOverrides @{
+                    sourceRepositoryURI = 'https://github.com/eddizege/ediz-remote'
+                }))) `
+        -FileSha256 $artifactSha `
+        -SourceRevision $sourceRevision
+    $script:TestCount += 1
+
+    $otherRevision = 'f' * 40
+    $attestationCases = @(
+        @{ ExitCode = 1; Output = $validAttestation },
+        @{ ExitCode = 0; Output = '' },
+        @{ ExitCode = 0; Output = '[]' },
+        @{ ExitCode = 0; Output = 'not-json' },
+        @{
+            ExitCode = 0
+            Output = ConvertTo-Json -Depth 12 -InputObject (New-AttestationEntry `
+                    -Sha256 $artifactSha -Revision $sourceRevision)
+        },
+        @{
+            ExitCode = 0
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $provenanceSha -Revision $sourceRevision))
+        },
+        @{
+            ExitCode = 0
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision `
+                    -PredicateType 'https://spdx.dev/Document/v2.3'))
+        },
+        @{
+            ExitCode = 0
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision),
+                (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision -CertificateOverrides @{
+                        runnerEnvironment = 'self-hosted'
+                    }))
+        }
+    )
+    $certificateOverrides = @(
+        @{ issuer = 'https://token.example.invalid' },
+        @{ sourceRepositoryURI = 'https://github.com/someone/ediz-remote' },
+        @{ sourceRepositoryDigest = $otherRevision },
+        @{ sourceRepositoryRef = 'refs/heads/dev' },
+        @{ buildSignerURI = 'https://github.com/EddizEge/ediz-remote/.github/workflows/other.yml@refs/heads/main' },
+        @{ buildSignerURI = 'https://github.com/EddizEge/ediz-remote/.github/workflows/windows-release.yml@refs/heads/dev' },
+        @{ buildSignerDigest = $otherRevision },
+        @{ runnerEnvironment = 'self-hosted' },
+        @{ runnerEnvironment = $null }
+    )
+    foreach ($override in $certificateOverrides) {
+        $attestationCases += @{
+            ExitCode = 0
+            Output = ConvertTo-AttestationOutput -Entries @(
+                (New-AttestationEntry -Sha256 $artifactSha -Revision $sourceRevision `
+                    -CertificateOverrides $override))
+        }
+    }
+    foreach ($case in $attestationCases) {
+        Assert-ThrowsCode -ExpectedCode 'provenance_attestation_invalid' -Action {
+            Assert-WindowsAttestationResult `
+                -ExitCode $case.ExitCode `
+                -Output $case.Output `
+                -FileSha256 $artifactSha `
+                -SourceRevision $sourceRevision
+        }
+    }
+    Assert-ThrowsCode -ExpectedCode 'provenance_attestation_invalid' -Action {
+        Assert-WindowsAttestationResult `
+            -ExitCode 0 `
+            -Output $validAttestation `
+            -FileSha256 $artifactSha.ToUpperInvariant() `
+            -SourceRevision $sourceRevision
+    }
+    Assert-ThrowsCode -ExpectedCode 'provenance_attestation_invalid' -Action {
+        Get-WindowsGhAttestationArguments `
+            -FilePath $provenanceArtifact `
+            -SourceRevision 'HEAD' | Out-Null
+    }
+
+    # Provenance üretimi sign kapısıyla aynı ön koşulları ister; başarısız
+    # koşu geride bayat çıktı bırakmaz.
+    Assert-ThrowsCode -ExpectedCode 'release_floor_missing' -Action {
+        Write-FixtureProvenance -Environment @{} | Out-Null
+    }
+    Assert-Equal -Expected $false -Actual (Test-Path -LiteralPath $provenancePath)
+    Assert-Equal -Expected $false -Actual (Test-Path -LiteralPath $checksumsPath)
+    $script:TestCount += 1
+    Assert-ThrowsCode -ExpectedCode 'release_rollback_rejected' -Action {
+        Write-FixtureProvenance -Environment @{
+            EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '8'
+        } | Out-Null
+    }
+    [IO.File]::WriteAllText($untrackedPath, '// untracked build input', $utf8)
+    Assert-ThrowsCode -ExpectedCode 'provenance_dirty_source' -Action {
+        Write-FixtureProvenance | Out-Null
+    }
+    Remove-Item -LiteralPath $untrackedPath -Force
+
+    $provenanceWriteCases = @(
+        @{
+            Code = 'provenance_dirty_source'
+            FileVersion = '0.1.0.7'
+            InformationalVersion = "0.1.0+$sourceRevision.dirty"
+        },
+        @{
+            Code = 'provenance_revision_mismatch'
+            FileVersion = '0.1.0.7'
+            InformationalVersion = "0.1.0+$fixtureRevision"
+        },
+        @{
+            Code = 'release_version_mismatch'
+            FileVersion = '0.2.0.7'
+            InformationalVersion = "0.2.0+$sourceRevision"
+        },
+        @{
+            Code = 'release_sequence_invalid'
+            FileVersion = '0.1.0.0'
+            InformationalVersion = "0.1.0+$sourceRevision"
+        }
+    )
+    foreach ($case in $provenanceWriteCases) {
+        [IO.File]::WriteAllBytes($provenanceArtifact, (New-VersionedPeBytes `
+                    -FileVersion $case.FileVersion `
+                    -InformationalVersion $case.InformationalVersion))
+        Assert-ThrowsCode -ExpectedCode $case.Code -Action {
+            Write-FixtureProvenance -Environment @{
+                EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE = '1'
+            } | Out-Null
+        }
+    }
+    [IO.File]::WriteAllBytes($provenanceArtifact, $provenanceBytes)
+
+    foreach ($badPath in @(
+            (Join-Path $provenanceBase 'provenance.json'),
+            (Join-Path $provenanceRoot 'EdizRemote.win-x64.provenance.json'),
+            (Join-Path $testRoot 'EdizRemote.win-x64.provenance.json'))) {
+        Assert-ThrowsCode -ExpectedCode 'provenance_path_invalid' -Action {
+            Write-WindowsReleaseProvenance `
+                -ArtifactPath $provenanceArtifact `
+                -ProvenancePath $badPath `
+                -ChecksumsPath $checksumsPath `
+                -RepositoryRoot $sourceRoot `
+                -BuildId 'ediz-remote@test' `
+                -Environment $floorSeven | Out-Null
+        }
+        Assert-ThrowsCode -ExpectedCode 'provenance_path_invalid' -Action {
+            Invoke-WindowsProvenanceGate `
+                -ArtifactPath $provenanceArtifact `
+                -ProvenancePath $provenancePath `
+                -ChecksumsPath ($badPath -replace 'provenance\.json$', 'SHA256SUMS') `
+                -Environment $floorSeven `
+                -AttestationInvoker $passingInvoker | Out-Null
+        }
+    }
+
+    Write-FixtureProvenance | Out-Null
+    Invoke-FixtureProvenanceGate | Out-Null
+    $script:TestCount += 1
 
     Write-Host ('WINDOWS_RELEASE_TESTS_OK:{0}' -f $script:TestCount)
 }

@@ -267,6 +267,21 @@ try {
                     Remove-Item -LiteralPath $staleManifest -Force
                 }
             }
+            # Provenance kaydı ve SHA256SUMS ağacın kardeşidir; eski paketi
+            # tarif ettikleri için yeni publish'te bırakılmaz.
+            $distributionDirectory = Join-Path $root 'artifacts\windows-desktop'
+            if (Test-Path -LiteralPath $distributionDirectory -PathType Container) {
+                foreach ($staleName in @(
+                        'EdizRemote.win-x64.provenance.json',
+                        'EdizRemote.win-x64.SHA256SUMS')) {
+                    $staleProvenance = Get-SafePublishChildPath `
+                        -PublishDirectory $distributionDirectory `
+                        -ChildName $staleName
+                    if (Test-Path -LiteralPath $staleProvenance -PathType Leaf) {
+                        Remove-Item -LiteralPath $staleProvenance -Force
+                    }
+                }
+            }
             & $localDotnet publish $desktopProject -c Release -r win-x64 `
                 --self-contained true -p:PublishSingleFile=true `
                 -p:IncludeNativeLibrariesForSelfExtract=true `
