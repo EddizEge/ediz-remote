@@ -46,6 +46,14 @@ $script:ReleaseErrorCodes = @(
     'release_rollback_rejected',
     'provenance_dirty_source',
     'provenance_revision_mismatch',
+    'provenance_path_invalid',
+    'provenance_manifest_invalid',
+    'provenance_manifest_too_large',
+    'provenance_mode_conflict',
+    'provenance_tree_mismatch',
+    'provenance_checksums_invalid',
+    'provenance_tool_missing',
+    'provenance_attestation_invalid',
     'source_state_unavailable',
     'internal_error'
 )
@@ -61,6 +69,26 @@ $script:ReleaseSequencePattern = '\A(0|[1-9][0-9]{0,4})\z'
 $script:ReleaseRevisionPattern = '\A[0-9a-f]{40}\z'
 $script:ReleaseMaximumVersionPart = 65534
 $script:ReleaseMaximumSequence = 65535
+
+# Provenance (GitHub attestation) modu: imzasız yayın ağacının bütünlüğü ayrı,
+# açık şemalı bir manifest + SHA256SUMS ile ve GitHub'da derlendiği Sigstore
+# SLSA build provenance attestation'ıyla doğrulanır. Doğrulama politikası
+# manifestten okunmaz; aşağıdaki sabitlerdir.
+$script:ProvenanceSchemaVersion = 1
+$script:ProvenanceIntegrityMode = 'github-attestation'
+$script:ProvenanceRepository = 'EddizEge/ediz-remote'
+$script:ProvenanceSignerWorkflow =
+    'EddizEge/ediz-remote/.github/workflows/windows-release.yml'
+$script:ProvenanceSignerWorkflowUri =
+    'https://github.com/EddizEge/ediz-remote/.github/workflows/windows-release.yml@refs/heads/main'
+$script:ProvenanceSourceRef = 'refs/heads/main'
+$script:ProvenancePredicateType = 'https://slsa.dev/provenance/v1'
+$script:ProvenanceOidcIssuer = 'https://token.actions.githubusercontent.com'
+$script:ProvenanceTreeRoot = 'win-x64'
+$script:ProvenanceManifestFileName = 'EdizRemote.win-x64.provenance.json'
+$script:ProvenanceChecksumsFileName = 'EdizRemote.win-x64.SHA256SUMS'
+$script:ProvenanceMaximumBytes = 4194304
+$script:ProvenanceMaximumAttestationOutputChars = 33554432
 
 function Throw-ReleaseError {
     param(
@@ -1747,6 +1775,1032 @@ function Invoke-WindowsReleaseGate {
     }
 }
 
+function Test-ExactString {
+    param(
+        [AllowNull()]
+        [object]$Value,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Expected,
+
+        [switch]$IgnoreCase
+    )
+
+    $comparison = [StringComparison]::Ordinal
+    if ($IgnoreCase) {
+        $comparison = [StringComparison]::OrdinalIgnoreCase
+    }
+    return $Value -is [string] -and
+        [string]::Equals([string]$Value, $Expected, $comparison)
+}
+
+function Assert-WindowsProvenanceFilePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactFullPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FileName
+    )
+
+    # Provenance çıktıları katalog gibi yayın ağacının dışında, `win-x64`
+    # klasörünün kardeşidir; böylece manifest kendi özetini kapsamaz.
+    try {
+        $releaseDirectory = [IO.Path]::GetDirectoryName(
+            [IO.Path]::GetFullPath($ArtifactFullPath))
+        $expectedDirectory = [IO.Path]::GetDirectoryName($releaseDirectory)
+        $fullPath = [IO.Path]::GetFullPath($Path)
+        $directory = [IO.Path]::GetDirectoryName($fullPath)
+    }
+    catch {
+        Throw-ReleaseError 'provenance_path_invalid'
+    }
+    if ([string]::IsNullOrWhiteSpace($directory) -or
+        -not [string]::Equals(
+            $directory,
+            $expectedDirectory,
+            [StringComparison]::OrdinalIgnoreCase) -or
+        -not [IO.Path]::GetFileName($fullPath).Equals(
+            $FileName,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        Throw-ReleaseError 'provenance_path_invalid'
+    }
+    try {
+        Assert-LocalReleaseDirectory -DirectoryPath $directory
+    }
+    catch {
+        Throw-ReleaseError 'provenance_path_invalid'
+    }
+    if (Test-Path -LiteralPath $fullPath) {
+        $item = Get-Item -LiteralPath $fullPath -Force
+        if ($item.PSIsContainer -or
+            ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Throw-ReleaseError 'provenance_path_invalid'
+        }
+    }
+    return $fullPath
+}
+
+function Test-WindowsProvenanceRelativePath {
+    param(
+        [AllowNull()]
+        [object]$Path
+    )
+
+    # Manifest yolu `win-x64` köküne göreli, `/` ayraçlı ve normalize edilmiş
+    # olmalıdır: mutlak yol, sürücü, `.`/`..`, ters bölü, kontrol karakteri ve
+    # Windows'un sessizce kırptığı nokta/boşluk sonekleri reddedilir.
+    if ($Path -isnot [string] -or
+        $Path.Length -lt 1 -or
+        $Path.Length -gt 1024) {
+        return $false
+    }
+    foreach ($character in $Path.ToCharArray()) {
+        $code = [int]$character
+        if ($code -lt 0x20 -or
+            $code -eq 0x7F -or
+            '\:*?"<>|'.IndexOf($character) -ge 0) {
+            return $false
+        }
+    }
+    foreach ($segment in $Path.Split('/')) {
+        if ($segment.Length -eq 0 -or
+            $segment -eq '.' -or
+            $segment -eq '..' -or
+            $segment.EndsWith('.', [StringComparison]::Ordinal) -or
+            $segment.EndsWith(' ', [StringComparison]::Ordinal)) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-WindowsProvenanceTreeEntries {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$TreeState
+    )
+
+    $count = @($TreeState.RelativePaths).Count
+    $keys = [string[]]::new($count)
+    $files = [string[]]::new($count)
+    for ($index = 0; $index -lt $count; $index += 1) {
+        $keys[$index] = ([string]$TreeState.RelativePaths[$index]).Replace('\', '/')
+        $files[$index] = [string]$TreeState.FilePaths[$index]
+    }
+    [Array]::Sort($keys, $files, [StringComparer]::Ordinal)
+
+    $seen = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    $entries = [Collections.Generic.List[object]]::new()
+    for ($index = 0; $index -lt $count; $index += 1) {
+        $relativePath = $keys[$index]
+        if (-not (Test-WindowsProvenanceRelativePath -Path $relativePath) -or
+            -not $seen.Add($relativePath)) {
+            Throw-ReleaseError 'release_tree_invalid'
+        }
+        # Authenticode manifesti yalnız imzalı katalog yolunda anlamlıdır;
+        # iki bütünlük modu aynı ağaçta karıştırılmaz.
+        if ([string]::Equals(
+                $relativePath,
+                'EdizRemote.release-manifest.json',
+                [StringComparison]::OrdinalIgnoreCase)) {
+            Throw-ReleaseError 'provenance_mode_conflict'
+        }
+        $entries.Add([PSCustomObject]@{
+                Path = $relativePath
+                SizeBytes = [int64]([IO.FileInfo]::new($files[$index]).Length)
+                Sha256 = (Get-FileSha256 -Path $files[$index]).ToLowerInvariant()
+            })
+    }
+    if (-not ($keys -ccontains 'EdizRemote.exe')) {
+        Throw-ReleaseError 'release_tree_invalid'
+    }
+    return , $entries.ToArray()
+}
+
+function New-WindowsProvenanceDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Identity,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BuildId,
+
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]]$Entries
+    )
+
+    $files = [Collections.Generic.List[object]]::new()
+    $totalBytes = [int64]0
+    foreach ($entry in $Entries) {
+        $files.Add([ordered]@{
+                path = [string]$entry.Path
+                sizeBytes = [int64]$entry.SizeBytes
+                sha256 = [string]$entry.Sha256
+            })
+        $totalBytes += [int64]$entry.SizeBytes
+    }
+    return [ordered]@{
+        schemaVersion = $script:ProvenanceSchemaVersion
+        product = 'Ediz Remote'
+        integrity = $script:ProvenanceIntegrityMode
+        buildId = $BuildId
+        release = [ordered]@{
+            version = [string]$Identity.Version
+            sequence = [int]$Identity.Sequence
+        }
+        source = [ordered]@{
+            repository = $script:ProvenanceRepository
+            revision = [string]$Identity.SourceRevision
+            treeClean = [bool]$Identity.SourceTreeClean
+        }
+        attestation = [ordered]@{
+            predicateType = $script:ProvenancePredicateType
+            signerWorkflow = $script:ProvenanceSignerWorkflow
+            sourceRef = $script:ProvenanceSourceRef
+        }
+        tree = [ordered]@{
+            root = $script:ProvenanceTreeRoot
+            fileCount = [int]$files.Count
+            totalBytes = $totalBytes
+            files = $files.ToArray()
+        }
+    }
+}
+
+function ConvertTo-WindowsProvenanceJson {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document
+    )
+
+    # Kanonik biçim: PowerShell 7 JSON yazıcısı, LF satır sonu, sonda tek LF.
+    # Doğrulama aynı biçimi yeniden üretip byte byte karşılaştırır; böylece
+    # yinelenen anahtar veya elle düzenlenmiş kayıt kabul edilmez.
+    $json = ($Document | ConvertTo-Json -Depth 8).Replace("`r`n", "`n")
+    return $json + "`n"
+}
+
+function ConvertTo-WindowsProvenanceCanonicalDocument {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document
+    )
+
+    $entries = @(foreach ($file in @($Document.tree.files)) {
+            [PSCustomObject]@{
+                Path = [string]$file.path
+                SizeBytes = [int64]$file.sizeBytes
+                Sha256 = [string]$file.sha256
+            }
+        })
+    $identity = [PSCustomObject]@{
+        Version = [string]$Document.release.version
+        Sequence = [int]$Document.release.sequence
+        SourceRevision = [string]$Document.source.revision
+        SourceTreeClean = [bool]$Document.source.treeClean
+    }
+    return New-WindowsProvenanceDocument `
+        -Identity $identity `
+        -BuildId ([string]$Document.buildId) `
+        -Entries $entries
+}
+
+function Get-WindowsProvenanceChecksumsText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Document
+    )
+
+    # `sha256sum -c` biçimi: küçük harf hex, iki boşluk, `win-x64/<yol>`, LF.
+    # Provenance manifestinin kendi özeti bu listeye girmez.
+    $builder = [Text.StringBuilder]::new()
+    foreach ($file in @($Document.tree.files)) {
+        [void]$builder.Append([string]$file.sha256)
+        [void]$builder.Append('  ')
+        [void]$builder.Append($script:ProvenanceTreeRoot)
+        [void]$builder.Append('/')
+        [void]$builder.Append([string]$file.path)
+        [void]$builder.Append("`n")
+    }
+    return $builder.ToString()
+}
+
+function Assert-WindowsProvenanceDocumentShape {
+    param(
+        [AllowNull()]
+        [object]$Document
+    )
+
+    Assert-ExactProperties -Value $Document -Expected @(
+        'schemaVersion',
+        'product',
+        'integrity',
+        'buildId',
+        'release',
+        'source',
+        'attestation',
+        'tree'
+    )
+    Assert-ExactProperties -Value $Document.release -Expected @(
+        'version',
+        'sequence'
+    )
+    Assert-ExactProperties -Value $Document.source -Expected @(
+        'repository',
+        'revision',
+        'treeClean'
+    )
+    Assert-ExactProperties -Value $Document.attestation -Expected @(
+        'predicateType',
+        'signerWorkflow',
+        'sourceRef'
+    )
+    Assert-ExactProperties -Value $Document.tree -Expected @(
+        'root',
+        'fileCount',
+        'totalBytes',
+        'files'
+    )
+
+    if (-not (Test-IsIntegralJsonNumber $Document.schemaVersion) -or
+        [int64]$Document.schemaVersion -ne $script:ProvenanceSchemaVersion -or
+        -not (Test-ExactString $Document.product 'Ediz Remote') -or
+        -not (Test-ExactString $Document.integrity $script:ProvenanceIntegrityMode) -or
+        $Document.buildId -isnot [string] -or
+        $Document.buildId -cnotmatch '\A[A-Za-z0-9][A-Za-z0-9._@+:-]{0,127}\z') {
+        throw 'invalid'
+    }
+
+    ConvertTo-WindowsReleaseVersion -Value $Document.release.version | Out-Null
+    if (-not (Test-IsIntegralJsonNumber $Document.release.sequence)) {
+        throw 'invalid'
+    }
+    ConvertTo-WindowsReleaseSequence `
+        -Value $Document.release.sequence `
+        -AllowDevelopment | Out-Null
+
+    if (-not (Test-ExactString $Document.source.repository $script:ProvenanceRepository) -or
+        $Document.source.revision -isnot [string] -or
+        $Document.source.revision -cnotmatch $script:ReleaseRevisionPattern -or
+        $Document.source.treeClean -isnot [bool]) {
+        throw 'invalid'
+    }
+    if (-not (Test-ExactString $Document.attestation.predicateType `
+                $script:ProvenancePredicateType) -or
+        -not (Test-ExactString $Document.attestation.signerWorkflow `
+                $script:ProvenanceSignerWorkflow) -or
+        -not (Test-ExactString $Document.attestation.sourceRef `
+                $script:ProvenanceSourceRef)) {
+        throw 'invalid'
+    }
+
+    $files = $Document.tree.files
+    if (-not (Test-ExactString $Document.tree.root $script:ProvenanceTreeRoot) -or
+        $files -isnot [Array] -or
+        $files.Count -lt 1 -or
+        $files.Count -gt 8192 -or
+        -not (Test-IsIntegralJsonNumber $Document.tree.fileCount) -or
+        [int64]$Document.tree.fileCount -ne $files.Count -or
+        -not (Test-IsIntegralJsonNumber $Document.tree.totalBytes)) {
+        throw 'invalid'
+    }
+
+    $seen = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    $previousPath = $null
+    $totalBytes = [int64]0
+    $hasArtifact = $false
+    foreach ($file in $files) {
+        Assert-ExactProperties -Value $file -Expected @(
+            'path',
+            'sizeBytes',
+            'sha256'
+        )
+        # Sıra ordinal ve kesin artan olmalı; büyük/küçük harf çakışması
+        # (Windows'ta aynı dosya) ayrıca reddedilir.
+        if (-not (Test-WindowsProvenanceRelativePath -Path $file.path) -or
+            ($null -ne $previousPath -and
+                [string]::CompareOrdinal($previousPath, $file.path) -ge 0) -or
+            -not $seen.Add($file.path) -or
+            [string]::Equals(
+                $file.path,
+                'EdizRemote.release-manifest.json',
+                [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-IsIntegralJsonNumber $file.sizeBytes) -or
+            [int64]$file.sizeBytes -lt 0 -or
+            $file.sha256 -isnot [string] -or
+            $file.sha256 -cnotmatch '\A[0-9a-f]{64}\z') {
+            throw 'invalid'
+        }
+        if ([string]::Equals(
+                $file.path,
+                'EdizRemote.exe',
+                [StringComparison]::Ordinal)) {
+            $hasArtifact = $true
+        }
+        $previousPath = $file.path
+        $totalBytes += [int64]$file.sizeBytes
+    }
+    if (-not $hasArtifact -or
+        [int64]$Document.tree.totalBytes -ne $totalBytes) {
+        throw 'invalid'
+    }
+}
+
+function Assert-WindowsProvenanceDocumentObject {
+    param(
+        [AllowNull()]
+        [object]$Document
+    )
+
+    try {
+        Assert-WindowsProvenanceDocumentShape -Document $Document
+    }
+    catch {
+        Throw-ReleaseError 'provenance_manifest_invalid'
+    }
+}
+
+function Read-WindowsProvenanceText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$InvalidCode,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TooLargeCode
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        Throw-ReleaseError $InvalidCode
+    }
+    $maximumBytes = $script:ProvenanceMaximumBytes
+    $stream = $null
+    $bytes = $null
+    try {
+        $stream = [IO.File]::Open(
+            $Path,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::Read)
+        if ($stream.Length -gt $maximumBytes) {
+            Throw-ReleaseError $TooLargeCode
+        }
+        $bytes = [byte[]]::new($maximumBytes + 1)
+        $total = 0
+        while ($total -lt $bytes.Length) {
+            $read = $stream.Read($bytes, $total, $bytes.Length - $total)
+            if ($read -eq 0) { break }
+            $total += $read
+        }
+        if ($total -gt $maximumBytes) {
+            Throw-ReleaseError $TooLargeCode
+        }
+        # Yazıcı BOM'suz UTF-8 üretir; BOM veya bozuk UTF-8 kanonik değildir.
+        if ($total -ge 3 -and
+            $bytes[0] -eq 0xEF -and
+            $bytes[1] -eq 0xBB -and
+            $bytes[2] -eq 0xBF) {
+            Throw-ReleaseError $InvalidCode
+        }
+        $utf8 = [Text.UTF8Encoding]::new($false, $true)
+        return $utf8.GetString($bytes, 0, $total)
+    }
+    catch {
+        if ($_.Exception.Message -eq $TooLargeCode) { throw }
+        Throw-ReleaseError $InvalidCode
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+}
+
+function Assert-WindowsProvenanceIdentity {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Identity,
+
+        [Parameter(Mandatory = $true)]
+        [object]$Document,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MinimumSequence
+    )
+
+    Assert-WindowsProvenanceDocumentObject -Document $Document
+    if ($MinimumSequence -lt 1 -or
+        $MinimumSequence -gt $script:ReleaseMaximumSequence) {
+        Throw-ReleaseError 'release_floor_invalid'
+    }
+    if (-not [string]::Equals(
+            [string]$Identity.Version,
+            [string]$Document.release.version,
+            [StringComparison]::Ordinal) -or
+        [int64]$Identity.Sequence -ne [int64]$Document.release.sequence -or
+        -not [string]::Equals(
+            [string]$Identity.SourceRevision,
+            [string]$Document.source.revision,
+            [StringComparison]::Ordinal) -or
+        [bool]$Identity.SourceTreeClean -ne [bool]$Document.source.treeClean) {
+        Throw-ReleaseError 'release_identity_mismatch'
+    }
+    if (-not [bool]$Document.source.treeClean) {
+        Throw-ReleaseError 'provenance_dirty_source'
+    }
+    $sequence = [int64]$Document.release.sequence
+    if ($sequence -lt 1) {
+        Throw-ReleaseError 'release_sequence_invalid'
+    }
+    if ($sequence -lt $MinimumSequence) {
+        Throw-ReleaseError 'release_rollback_rejected'
+    }
+}
+
+function Assert-WindowsProvenanceOffline {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactFullPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ProvenanceFullPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ChecksumsFullPath,
+
+        [Parameter(Mandatory = $true)]
+        [object]$TreeState,
+
+        [Parameter(Mandatory = $true)]
+        [int]$MinimumSequence
+    )
+
+    $text = Read-WindowsProvenanceText `
+        -Path $ProvenanceFullPath `
+        -InvalidCode 'provenance_manifest_invalid' `
+        -TooLargeCode 'provenance_manifest_too_large'
+    try {
+        $document = $text | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        Throw-ReleaseError 'provenance_manifest_invalid'
+    }
+    Assert-WindowsProvenanceDocumentObject -Document $document
+    $canonical = ConvertTo-WindowsProvenanceJson `
+        -Document (ConvertTo-WindowsProvenanceCanonicalDocument -Document $document)
+    if (-not [string]::Equals($canonical, $text, [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'provenance_manifest_invalid'
+    }
+
+    # Ağaç ↔ manifest: eksik/fazla dosya, yol, boyut ve SHA-256 birebir.
+    $entries = Get-WindowsProvenanceTreeEntries -TreeState $TreeState
+    $files = @($document.tree.files)
+    if ($entries.Count -ne $files.Count) {
+        Throw-ReleaseError 'provenance_tree_mismatch'
+    }
+    for ($index = 0; $index -lt $files.Count; $index += 1) {
+        if (-not [string]::Equals(
+                [string]$entries[$index].Path,
+                [string]$files[$index].path,
+                [StringComparison]::Ordinal) -or
+            [int64]$entries[$index].SizeBytes -ne [int64]$files[$index].sizeBytes -or
+            -not [string]::Equals(
+                [string]$entries[$index].Sha256,
+                [string]$files[$index].sha256,
+                [StringComparison]::Ordinal)) {
+            Throw-ReleaseError 'provenance_tree_mismatch'
+        }
+    }
+
+    $checksums = Read-WindowsProvenanceText `
+        -Path $ChecksumsFullPath `
+        -InvalidCode 'provenance_checksums_invalid' `
+        -TooLargeCode 'provenance_checksums_invalid'
+    if (-not [string]::Equals(
+            (Get-WindowsProvenanceChecksumsText -Document $document),
+            $checksums,
+            [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'provenance_checksums_invalid'
+    }
+
+    $identity = ConvertTo-WindowsReleaseIdentity `
+        -Facts (Get-WindowsReleaseIdentityFacts -ArtifactPath $ArtifactFullPath)
+    Assert-WindowsProvenanceIdentity `
+        -Identity $identity `
+        -Document $document `
+        -MinimumSequence $MinimumSequence
+    return $document
+}
+
+function Write-WindowsReleaseProvenance {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ProvenancePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ChecksumsPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BuildId,
+
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment
+    )
+
+    $artifactFullPath = Assert-ArtifactPath -ArtifactPath $ArtifactPath
+    $provenanceFullPath = Assert-WindowsProvenanceFilePath `
+        -ArtifactFullPath $artifactFullPath `
+        -Path $ProvenancePath `
+        -FileName $script:ProvenanceManifestFileName
+    $checksumsFullPath = Assert-WindowsProvenanceFilePath `
+        -ArtifactFullPath $artifactFullPath `
+        -Path $ChecksumsPath `
+        -FileName $script:ProvenanceChecksumsFileName
+    # Önceki koşunun çıktısı bu koşu başarısız olursa geride bayat kalmamalı.
+    foreach ($outputPath in @($provenanceFullPath, $checksumsFullPath)) {
+        if (Test-Path -LiteralPath $outputPath -PathType Leaf) {
+            Remove-Item -LiteralPath $outputPath -Force
+        }
+    }
+
+    # Sign kapısıyla aynı ön koşullar: taban, temiz kaynak, commit = HEAD,
+    # package.json sürümü, sequence >= 1 ve tabandan küçük olmama.
+    $minimumSequence = Get-WindowsReleaseMinimumSequence -Environment $Environment
+    $identity = Assert-WindowsReleaseSigningProvenance `
+        -ArtifactPath $artifactFullPath `
+        -RepositoryRoot $RepositoryRoot `
+        -Environment $Environment
+
+    $releaseDirectory = [IO.Path]::GetDirectoryName($artifactFullPath)
+    $outputDirectory = [IO.Path]::GetDirectoryName($provenanceFullPath)
+    $nonce = [guid]::NewGuid().ToString('N')
+    $temporaryProvenance = Join-Path $outputDirectory `
+        ('.EdizRemote.win-x64.provenance.{0}.tmp' -f $nonce)
+    $temporaryChecksums = Join-Path $outputDirectory `
+        ('.EdizRemote.win-x64.SHA256SUMS.{0}.tmp' -f $nonce)
+    $lockedTree = $null
+    $completed = $false
+    try {
+        $lockedTree = Open-WindowsReleaseTreeLocks `
+            -ReleaseDirectory $releaseDirectory
+        $entries = Get-WindowsProvenanceTreeEntries -TreeState $lockedTree.State
+        $document = New-WindowsProvenanceDocument `
+            -Identity $identity `
+            -BuildId $BuildId `
+            -Entries $entries
+        $json = ConvertTo-WindowsProvenanceJson -Document $document
+        Assert-WindowsProvenanceDocumentObject -Document ($json | ConvertFrom-Json)
+        if ([Text.Encoding]::UTF8.GetByteCount($json) -gt
+            $script:ProvenanceMaximumBytes) {
+            Throw-ReleaseError 'provenance_manifest_too_large'
+        }
+        $checksums = Get-WindowsProvenanceChecksumsText -Document $document
+
+        # Hash'ler hesaplanırken commit veya ağaç değiştiyse kayıt yazılmaz.
+        Assert-WindowsReleaseSourceState `
+            -Identity $identity `
+            -SourceState (Get-WindowsReleaseSourceState -RepositoryRoot $RepositoryRoot) `
+            -PackageVersion (Get-WindowsReleasePackageVersion -RepositoryRoot $RepositoryRoot)
+
+        $utf8 = [Text.UTF8Encoding]::new($false)
+        [IO.File]::WriteAllText($temporaryChecksums, $checksums, $utf8)
+        [IO.File]::WriteAllText($temporaryProvenance, $json, $utf8)
+        Move-Item -LiteralPath $temporaryChecksums -Destination $checksumsFullPath -Force
+        Move-Item -LiteralPath $temporaryProvenance -Destination $provenanceFullPath -Force
+
+        $after = Get-WindowsReleaseTreeState -ReleaseDirectory $releaseDirectory
+        if (-not [string]::Equals(
+                $lockedTree.State.Fingerprint,
+                $after.Fingerprint,
+                [StringComparison]::Ordinal)) {
+            Throw-ReleaseError 'release_tree_changed'
+        }
+        # Yazılan kayıt, doğrulayıcının attestation dışındaki bütün
+        # kontrollerinden geri okunarak geçirilir.
+        Assert-WindowsProvenanceOffline `
+            -ArtifactFullPath $artifactFullPath `
+            -ProvenanceFullPath $provenanceFullPath `
+            -ChecksumsFullPath $checksumsFullPath `
+            -TreeState $lockedTree.State `
+            -MinimumSequence $minimumSequence | Out-Null
+        $completed = $true
+        return $document
+    }
+    finally {
+        Close-WindowsReleaseTreeLocks -LockedTree $lockedTree
+        foreach ($temporaryPath in @($temporaryProvenance, $temporaryChecksums)) {
+            if (Test-Path -LiteralPath $temporaryPath) {
+                Remove-Item -LiteralPath $temporaryPath -Force
+            }
+        }
+        if (-not $completed) {
+            foreach ($outputPath in @($provenanceFullPath, $checksumsFullPath)) {
+                if (Test-Path -LiteralPath $outputPath -PathType Leaf) {
+                    Remove-Item -LiteralPath $outputPath -Force
+                }
+            }
+        }
+    }
+}
+
+function Get-WindowsGhAttestationArguments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRevision
+    )
+
+    if ($SourceRevision -cnotmatch $script:ReleaseRevisionPattern) {
+        Throw-ReleaseError 'provenance_attestation_invalid'
+    }
+    # Kimlik politikası en sıkı biçimde: depo, signer workflow ve onun commit'i,
+    # kaynak ref'i ve commit'i, SLSA predicate, GitHub OIDC issuer ve yalnız
+    # GitHub-hosted runner.
+    return [string[]]@(
+        'attestation',
+        'verify',
+        $FilePath,
+        '--repo',
+        $script:ProvenanceRepository,
+        '--signer-workflow',
+        $script:ProvenanceSignerWorkflow,
+        '--signer-digest',
+        $SourceRevision,
+        '--source-ref',
+        $script:ProvenanceSourceRef,
+        '--source-digest',
+        $SourceRevision,
+        '--predicate-type',
+        $script:ProvenancePredicateType,
+        '--cert-oidc-issuer',
+        $script:ProvenanceOidcIssuer,
+        '--deny-self-hosted-runners',
+        '--format',
+        'json'
+    )
+}
+
+function Assert-WindowsAttestationEntry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Entry,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FileSha256,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRevision
+    )
+
+    $statement = $Entry.verificationResult.statement
+    $certificate = $Entry.verificationResult.signature.certificate
+    if (-not (Test-ExactString $statement.predicateType $script:ProvenancePredicateType)) {
+        throw 'invalid'
+    }
+    $matched = $false
+    foreach ($subject in @($statement.subject)) {
+        $digest = $null
+        if ($null -ne $subject -and
+            $null -ne $subject.PSObject.Properties['digest'] -and
+            $null -ne $subject.digest -and
+            $null -ne $subject.digest.PSObject.Properties['sha256']) {
+            $digest = $subject.digest.sha256
+        }
+        if (Test-ExactString $digest $FileSha256) {
+            $matched = $true
+        }
+    }
+    # Sertifika alanları GitHub OIDC token'ından gelir; workflow tarafından
+    # değiştirilemez. `statement.predicate` güven kaynağı olarak kullanılmaz.
+    if (-not $matched -or
+        -not (Test-ExactString $certificate.issuer $script:ProvenanceOidcIssuer) -or
+        -not (Test-ExactString $certificate.sourceRepositoryURI `
+                ($script:ReleaseSourceRepository) -IgnoreCase) -or
+        -not (Test-ExactString $certificate.sourceRepositoryDigest $SourceRevision) -or
+        -not (Test-ExactString $certificate.sourceRepositoryRef $script:ProvenanceSourceRef) -or
+        -not (Test-ExactString $certificate.buildSignerURI `
+                $script:ProvenanceSignerWorkflowUri -IgnoreCase) -or
+        -not (Test-ExactString $certificate.buildSignerDigest $SourceRevision) -or
+        -not (Test-ExactString $certificate.runnerEnvironment 'github-hosted')) {
+        throw 'invalid'
+    }
+}
+
+function Assert-WindowsAttestationResult {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$ExitCode,
+
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Output,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FileSha256,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRevision
+    )
+
+    if ($ExitCode -ne 0 -or
+        $FileSha256 -cnotmatch '\A[0-9a-f]{64}\z' -or
+        $SourceRevision -cnotmatch $script:ReleaseRevisionPattern -or
+        [string]::IsNullOrWhiteSpace($Output) -or
+        $Output.Length -gt $script:ProvenanceMaximumAttestationOutputChars -or
+        -not $Output.TrimStart().StartsWith('[', [StringComparison]::Ordinal)) {
+        Throw-ReleaseError 'provenance_attestation_invalid'
+    }
+    try {
+        $results = @($Output | ConvertFrom-Json -ErrorAction Stop)
+        if ($results.Count -lt 1 -or $results.Count -gt 64) {
+            throw 'invalid'
+        }
+        foreach ($result in $results) {
+            Assert-WindowsAttestationEntry `
+                -Entry $result `
+                -FileSha256 $FileSha256 `
+                -SourceRevision $SourceRevision
+        }
+    }
+    catch {
+        Throw-ReleaseError 'provenance_attestation_invalid'
+    }
+}
+
+function Resolve-GhPath {
+    param(
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment
+    )
+
+    $configuredPath = Get-EnvironmentSetting `
+        -Name 'EDIZ_REMOTE_GH_PATH' `
+        -Environment $Environment
+    $candidatePath = $null
+    try {
+        if (-not [string]::IsNullOrWhiteSpace($configuredPath)) {
+            $candidatePath = [IO.Path]::GetFullPath($configuredPath)
+        }
+        else {
+            $command = Get-Command 'gh.exe' -CommandType Application `
+                -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($null -eq $command) {
+                Throw-ReleaseError 'provenance_tool_missing'
+            }
+            $candidatePath = [IO.Path]::GetFullPath($command.Source)
+        }
+        if ($candidatePath.StartsWith('\\', [StringComparison]::Ordinal) -or
+            -not [IO.Path]::GetFileName($candidatePath).Equals(
+                'gh.exe',
+                [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
+            Throw-ReleaseError 'provenance_tool_missing'
+        }
+        $tool = Get-Item -LiteralPath $candidatePath -Force
+        if ($tool.PSIsContainer -or
+            ($tool.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            Throw-ReleaseError 'provenance_tool_missing'
+        }
+        Assert-LocalReleaseDirectory `
+            -DirectoryPath ([IO.Path]::GetDirectoryName($candidatePath))
+    }
+    catch {
+        Throw-ReleaseError 'provenance_tool_missing'
+    }
+    return $candidatePath
+}
+
+function Invoke-GhAttestationProcess {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$GhPath,
+
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments
+    )
+
+    # Karar yalnız çıkış koduna ve stdout JSON'una dayanır; stderr (hata
+    # ayrıntısı, token durumu) loga aktarılmaz.
+    $ErrorActionPreference = 'Continue'
+    $toolLock = $null
+    try {
+        $toolLock = [IO.File]::Open(
+            $GhPath,
+            [IO.FileMode]::Open,
+            [IO.FileAccess]::Read,
+            [IO.FileShare]::Read)
+        $output = @(& $GhPath @Arguments 2>$null)
+        $exitCode = [int]$LASTEXITCODE
+        return [PSCustomObject]@{
+            ExitCode = $exitCode
+            Output = [string]::Join("`n", [string[]]$output)
+        }
+    }
+    catch {
+        return [PSCustomObject]@{ ExitCode = 1; Output = '' }
+    }
+    finally {
+        if ($null -ne $toolLock) { $toolLock.Dispose() }
+    }
+}
+
+function Invoke-WindowsAttestationCheck {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$FileSha256,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRevision,
+
+        [AllowNull()]
+        [string]$GhPath,
+
+        [AllowNull()]
+        [scriptblock]$AttestationInvoker
+    )
+
+    $arguments = Get-WindowsGhAttestationArguments `
+        -FilePath $FilePath `
+        -SourceRevision $SourceRevision
+    try {
+        if ($null -ne $AttestationInvoker) {
+            $result = & $AttestationInvoker $arguments
+        }
+        else {
+            $result = Invoke-GhAttestationProcess `
+                -GhPath $GhPath `
+                -Arguments $arguments
+        }
+    }
+    catch {
+        if ($_.Exception.Message -eq 'provenance_tool_missing') { throw }
+        Throw-ReleaseError 'provenance_attestation_invalid'
+    }
+    if ($null -eq $result -or
+        @($result).Count -ne 1 -or
+        $null -eq $result.PSObject.Properties['ExitCode'] -or
+        $null -eq $result.PSObject.Properties['Output'] -or
+        -not (Test-IsIntegralJsonNumber $result.ExitCode)) {
+        Throw-ReleaseError 'provenance_attestation_invalid'
+    }
+    Assert-WindowsAttestationResult `
+        -ExitCode ([int]$result.ExitCode) `
+        -Output ([string]$result.Output) `
+        -FileSha256 $FileSha256 `
+        -SourceRevision $SourceRevision
+}
+
+function Invoke-WindowsProvenanceGate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArtifactPath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ProvenancePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ChecksumsPath,
+
+        [AllowNull()]
+        [System.Collections.IDictionary]$Environment,
+
+        # Testler gerçek `gh`/ağ yerine çağrıyı enjekte eder; argüman dizisini
+        # alır, `ExitCode` ve `Output` taşıyan tek nesne döndürür.
+        [AllowNull()]
+        [scriptblock]$AttestationInvoker
+    )
+
+    $minimumSequence = Get-WindowsReleaseMinimumSequence -Environment $Environment
+    $artifactFullPath = Assert-ArtifactPath -ArtifactPath $ArtifactPath
+    $provenanceFullPath = Assert-WindowsProvenanceFilePath `
+        -ArtifactFullPath $artifactFullPath `
+        -Path $ProvenancePath `
+        -FileName $script:ProvenanceManifestFileName
+    $checksumsFullPath = Assert-WindowsProvenanceFilePath `
+        -ArtifactFullPath $artifactFullPath `
+        -Path $ChecksumsPath `
+        -FileName $script:ProvenanceChecksumsFileName
+    $releaseDirectory = [IO.Path]::GetDirectoryName($artifactFullPath)
+    $lockedTree = $null
+    $fileLocks = [Collections.Generic.List[IDisposable]]::new()
+    try {
+        $lockedTree = Open-WindowsReleaseTreeLocks `
+            -ReleaseDirectory $releaseDirectory
+        foreach ($path in @($provenanceFullPath, $checksumsFullPath)) {
+            if (Test-Path -LiteralPath $path -PathType Leaf) {
+                $fileLocks.Add([IO.File]::Open(
+                        $path,
+                        [IO.FileMode]::Open,
+                        [IO.FileAccess]::Read,
+                        [IO.FileShare]::Read))
+            }
+        }
+        $document = Assert-WindowsProvenanceOffline `
+            -ArtifactFullPath $artifactFullPath `
+            -ProvenanceFullPath $provenanceFullPath `
+            -ChecksumsFullPath $checksumsFullPath `
+            -TreeState $lockedTree.State `
+            -MinimumSequence $minimumSequence
+
+        $ghPath = $null
+        if ($null -eq $AttestationInvoker) {
+            $ghPath = Resolve-GhPath -Environment $Environment
+        }
+        $artifactSha256 = $null
+        foreach ($file in @($document.tree.files)) {
+            if ([string]::Equals(
+                    [string]$file.path,
+                    'EdizRemote.exe',
+                    [StringComparison]::Ordinal)) {
+                $artifactSha256 = [string]$file.sha256
+            }
+        }
+        Invoke-WindowsAttestationCheck `
+            -FilePath $artifactFullPath `
+            -FileSha256 $artifactSha256 `
+            -SourceRevision ([string]$document.source.revision) `
+            -GhPath $ghPath `
+            -AttestationInvoker $AttestationInvoker
+        Invoke-WindowsAttestationCheck `
+            -FilePath $provenanceFullPath `
+            -FileSha256 (Get-FileSha256 -Path $provenanceFullPath).ToLowerInvariant() `
+            -SourceRevision ([string]$document.source.revision) `
+            -GhPath $ghPath `
+            -AttestationInvoker $AttestationInvoker
+
+        $after = Get-WindowsReleaseTreeState -ReleaseDirectory $releaseDirectory
+        if (-not [string]::Equals(
+                $lockedTree.State.Fingerprint,
+                $after.Fingerprint,
+                [StringComparison]::Ordinal)) {
+            Throw-ReleaseError 'release_tree_changed'
+        }
+        return $document
+    }
+    finally {
+        foreach ($lock in $fileLocks) { $lock.Dispose() }
+        Close-WindowsReleaseTreeLocks -LockedTree $lockedTree
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-WindowsReleaseErrorCode',
     'ConvertTo-WindowsReleaseVersion',
@@ -1776,5 +2830,12 @@ Export-ModuleMember -Function @(
     'Invoke-WindowsStoreSigning',
     'Invoke-WindowsCatalogStoreSigning',
     'New-WindowsReleaseCatalog',
-    'Invoke-WindowsReleaseGate'
+    'Invoke-WindowsReleaseGate',
+    'Assert-WindowsProvenanceDocumentObject',
+    'ConvertTo-WindowsProvenanceJson',
+    'Get-WindowsProvenanceChecksumsText',
+    'Write-WindowsReleaseProvenance',
+    'Get-WindowsGhAttestationArguments',
+    'Assert-WindowsAttestationResult',
+    'Invoke-WindowsProvenanceGate'
 )
