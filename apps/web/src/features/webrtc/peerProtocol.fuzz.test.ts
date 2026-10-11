@@ -26,6 +26,9 @@ import {
 const FUZZ_SEED = 0x4443_4846
 const RANDOM_ITERATIONS = 3_000
 const MUTATIONS_PER_SEED = 300
+// Yalnız süre bütçesi; kapsam yukarıdaki sabitlerle belirlenir (CI runner'ı
+// yerel makineden yavaş olabilir).
+const FUZZ_TEST_TIMEOUT_MS = 120_000
 const POLLUTION_MARKER = 'edizRemoteFuzzPolluted'
 
 const session = { channel: 'session', version: 2, sequence: 1 } as const
@@ -174,7 +177,7 @@ describe('DataChannel parser fuzz matrix', () => {
       }
     }
     expect(polluted()).toBeUndefined()
-  }, 30_000)
+  }, FUZZ_TEST_TIMEOUT_MS)
 
   it('rejects suspicious keys at every depth of every DataChannel message', () => {
     for (const seed of DATA_CHANNEL_SEEDS) {
@@ -204,7 +207,7 @@ describe('DataChannel parser fuzz matrix', () => {
       }
     })
     expect(polluted()).toBeUndefined()
-  }, 30_000)
+  }, FUZZ_TEST_TIMEOUT_MS)
 
   it('rejects unpaired surrogates in peer identifiers, labels and control text', () => {
     const lone = '\\ud800'

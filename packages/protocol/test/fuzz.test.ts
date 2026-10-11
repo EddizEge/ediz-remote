@@ -28,6 +28,9 @@ import {
 const FUZZ_SEED = 0x4544_495a
 const RANDOM_VALUE_ITERATIONS = 2_500
 const MUTATIONS_PER_SEED = 250
+// Yalnız süre bütçesi; kapsam yukarıdaki sabitlerle belirlenir. Yüklü yerel
+// makinede ağır test ~26 sn sürdü, CI runner'ı daha yavaş olabilir.
+const FUZZ_TEST_TIMEOUT_MS = 120_000
 
 const negotiationId = '11111111-1111-4111-8111-111111111111'
 const nativeNegotiationId = '22222222-2222-4222-8222-222222222222'
@@ -262,7 +265,7 @@ describe('protocol fuzz matrix', () => {
       }
     }
     expect(polluted()).toBeUndefined()
-  }, 30_000)
+  }, FUZZ_TEST_TIMEOUT_MS)
 
   it('rejects suspicious keys at every object depth of every valid seed', () => {
     for (const group of seedGroups) {
@@ -279,7 +282,7 @@ describe('protocol fuzz matrix', () => {
       }
     }
     expect(polluted()).toBeUndefined()
-  }, 30_000)
+  }, FUZZ_TEST_TIMEOUT_MS)
 
   it('never throws on structural mutations and accepts only exact, unrewritten values', () => {
     const random = new SeededRandom(FUZZ_SEED ^ 0x5eed)
@@ -301,7 +304,7 @@ describe('protocol fuzz matrix', () => {
       })
     }
     expect(polluted()).toBeUndefined()
-  }, 30_000)
+  }, FUZZ_TEST_TIMEOUT_MS)
 
   it('rejects deep, wide and oversized structures without throwing', () => {
     const deep = { type: 'signal', payload: deeplyNestedArray(20_000) }
