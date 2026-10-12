@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private bool _applicationExitRequested;
     private bool _cleanupCompleted;
     private bool _webViewConfigured;
+    private CoreWebView2? _configuredCoreWebView2;
     private bool _webViewInitializationInProgress;
     private bool _webViewOperational;
     private bool _webViewFailureInProgress;
@@ -145,6 +146,10 @@ public partial class MainWindow : Window
             }
             else
             {
+                // The browser can crash before ProcessFailed is subscribed; a
+                // control left in that state throws on reuse, so the next
+                // explicit retry starts from a fresh one.
+                _recreateWebViewOnRetry = true;
                 ShowLoadingFailure(
                     "Windows web bileşeni başlatılamadı. Microsoft Edge WebView2 Runtime'ı " +
                     "kurup veya güncelleyip tekrar deneyin.");
@@ -200,6 +205,7 @@ public partial class MainWindow : Window
             await core.AddScriptToExecuteOnDocumentCreatedAsync(
                 $"window.__EDIZ_REMOTE_CONFIG__ = {runtimeConfiguration};");
 
+            _configuredCoreWebView2 = core;
             core.WebMessageReceived += OnWebMessageReceived;
             core.NavigationCompleted += OnNavigationCompleted;
             core.NavigationStarting += OnNavigationStarting;
@@ -398,22 +404,33 @@ public partial class MainWindow : Window
             throw new InvalidOperationException("WebView container is unavailable.");
         }
 
-        if (_webViewConfigured && previous.CoreWebView2 is { } core)
-        {
-            core.WebMessageReceived -= OnWebMessageReceived;
-            core.NavigationCompleted -= OnNavigationCompleted;
-            core.NavigationStarting -= OnNavigationStarting;
-            core.ProcessFailed -= OnWebViewProcessFailed;
-            core.NewWindowRequested -= OnNewWindowRequested;
-            previous.PreviewKeyDown -= OnWebViewPreviewKeyDown;
-        }
-
+        // previous.CoreWebView2 throws once the browser process has crashed,
+        // so events are detached through the instance captured at setup.
+        var core = _configuredCoreWebView2;
+        _configuredCoreWebView2 = null;
         var index = parent.Children.IndexOf(previous);
-        parent.Children.Remove(previous);
-        previous.Dispose();
-        var replacement = new WebView2 { Visibility = Visibility.Hidden };
-        parent.Children.Insert(Math.Max(0, index), replacement);
-        WebView = replacement;
+        WebViewControlReplacement.Replace(
+            detachCoreEvents: () =>
+            {
+                if (core is null) return;
+                core.WebMessageReceived -= OnWebMessageReceived;
+                core.NavigationCompleted -= OnNavigationCompleted;
+                core.NavigationStarting -= OnNavigationStarting;
+                core.ProcessFailed -= OnWebViewProcessFailed;
+                core.NewWindowRequested -= OnNewWindowRequested;
+            },
+            detachPrevious: () =>
+            {
+                previous.PreviewKeyDown -= OnWebViewPreviewKeyDown;
+                parent.Children.Remove(previous);
+            },
+            disposePrevious: previous.Dispose,
+            attachReplacement: () =>
+            {
+                var replacement = new WebView2 { Visibility = Visibility.Hidden };
+                parent.Children.Insert(Math.Max(0, index), replacement);
+                WebView = replacement;
+            });
         _webViewConfigured = false;
         _webViewNavigationPolicy.CancelExpectedNavigation();
     }

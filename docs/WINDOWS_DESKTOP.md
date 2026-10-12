@@ -117,6 +117,19 @@ kontrolünü yeniden oluşturarak toparlanır. Native
 kaynakların güvenli kapanışı tamamlanamazsa yanıltıcı bir retry döngüsü açılmaz;
 kullanıcıdan uygulamayı yeniden başlatması istenir.
 
+Browser process çöktüğünde WPF `WebView2` kontrolü `CoreWebView2` erişiminde
+`InvalidOperationException` atar. Bu yüzden yeniden oluşturma eski kontrolün
+`CoreWebView2` üyesine dokunmaz: olay abonelikleri kurulumda saklanan örnek
+üzerinden, dispose ise best-effort kaldırılır; kontrol görsel ağaçtan çıkarılır ve
+`Yeniden dene` yeni ortamla denetimi baştan kurar. Başlatma başka bir nedenle
+başarısız olursa da sonraki açık retry yeni bir kontrolle başlar. Retry yine
+yalnız kullanıcı düğmeye bastığında çalışır; otomatik yeniden deneme yoktur.
+
+RivaTuner Statistics Server (MSI Afterburner) gibi başka süreçlere kanca enjekte
+eden araçlar WebView2'yi açılışta çökertebilir. `Yeniden dene` arayüzü geri getirir;
+kalıcı çözüm, o araçta `EdizRemote.exe` ve `msedgewebview2.exe` için uygulama
+algılamasını (overlay/kanca) kapatmaktır.
+
 Köprü hata ayrıntısını serbest metin olarak taşımaz. Capture, encoder, GPU input,
 kontrol, ekran/kalite geçişi ve native video hataları yalnız allowlist
 `errorCode` değerleriyle bildirilir; React sınırı bunları yeniden doğrulayıp sabit

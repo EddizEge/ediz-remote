@@ -72,6 +72,67 @@ public sealed class LifecycleTests
     }
 
     [Fact]
+    public void WebViewReplacementRunsEveryStepOnceInOrder()
+    {
+        var steps = new List<string>();
+
+        WebViewControlReplacement.Replace(
+            () => steps.Add("detach-core"),
+            () => steps.Add("detach-previous"),
+            () => steps.Add("dispose"),
+            () => steps.Add("attach"));
+
+        Assert.Equal(
+            ["detach-core", "detach-previous", "dispose", "attach"],
+            steps);
+    }
+
+    [Theory]
+    [InlineData("detach-core")]
+    [InlineData("dispose")]
+    [InlineData("both")]
+    public void WebViewReplacementCompletesWhenCrashedControlThrows(
+        string throwingStep)
+    {
+        var steps = new List<string>();
+
+        WebViewControlReplacement.Replace(
+            () =>
+            {
+                steps.Add("detach-core");
+                if (throwingStep is "detach-core" or "both") ThrowCrashed();
+            },
+            () => steps.Add("detach-previous"),
+            () =>
+            {
+                steps.Add("dispose");
+                if (throwingStep is "dispose" or "both") ThrowCrashed();
+            },
+            () => steps.Add("attach"));
+
+        Assert.Equal(
+            ["detach-core", "detach-previous", "dispose", "attach"],
+            steps);
+    }
+
+    [Fact]
+    public void WebViewReplacementSurfacesVisualTreeFailures()
+    {
+        var attached = false;
+
+        Assert.Throws<InvalidOperationException>(() =>
+            WebViewControlReplacement.Replace(
+                () => { },
+                () => throw new InvalidOperationException("tree"),
+                () => { },
+                () => attached = true));
+        Assert.False(attached);
+    }
+
+    private static void ThrowCrashed() =>
+        throw new InvalidOperationException("browser process crashed");
+
+    [Fact]
     public void SecondInstanceSignalsPrimaryWithoutAcquiringMutex()
     {
         var instanceName = $"Local\\EdizRemote.Tests.{Guid.NewGuid():N}";
