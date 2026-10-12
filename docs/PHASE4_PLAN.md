@@ -177,10 +177,13 @@ Dilim 4 kararı:
   ağaç, `HEAD` = gömülü commit, `package.json` sürümü, sequence ≥ 1 ve güvenilir
   `EDIZ_REMOTE_RELEASE_MINIMUM_SEQUENCE` tabanı; verify'da manifest/EXE kimlik eşliği,
   temiz kaynak ve taban. Gerçek PE fixture'lı 111 politika testi.
-- [ ] Pi `linux/arm64` hedefinde gerçek container kapısını sıfır bulguyla geçir;
+- [x] Pi `linux/arm64` hedefinde gerçek container kapısını sıfır bulguyla geçir;
   UID 1000 secret/audit volume ve application/coturn health deployment smoke
-  kanıtını kaydet. (2026-10-11: arm64 kapısı 3/3 hedef sıfır bulguyla geçti,
-  manifest `FCC59887…782B`; deployment smoke bekliyor.)
+  kanıtını kaydet. (2026-10-11 ilk arm64 kapısı; 2026-10-12 deploy öncesi yeniden
+  3/3 `0`, manifest `BFF1492E…0521`, `security:container:deploy` ile production,
+  iki `healthy`, UID 1000/read-only/capsiz; dış HTTPS/WSS politika testi 5/5.)
+- [ ] Audit arızasında 503/restart davranışını aynı image ile izole Docker
+  ortamında doğrula; gerçek oturum sonrası production log/audit örneğini kaydet.
 - [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
   yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
   sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
@@ -320,7 +323,8 @@ sertifika gelince) ve temiz makine doğrulaması gerekir. Kriter bazında kanıt
 - Audited application runtime Node/no-npm smoke'u; audited coturn runtime ise UID
   1000, read-only, capsiz, `no-new-privileges` health smoke'u verdi. Güncel
   coturn HMAC relay probe'u 6/6 geçti. Bu yerel amd64 kanıtıdır; Pi `linux/arm64`
-  gerçek scan, secret/audit-volume ve iki-service deploy smoke hâlâ beklenmektedir.
+  gerçek scan, secret/audit-volume ve iki-service deploy smoke 2026-10-12'de
+  production'da tamamlandı (`docs/CONTAINER_RELEASE.md`).
 - Bu doğrulamada fiziksel EXE/UI smoke çalıştırılmadı.
 
 ## 2026-10-09 devir sonrası taban ve release provenance doğrulaması

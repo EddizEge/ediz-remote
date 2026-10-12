@@ -14,10 +14,11 @@ belgelerin yerine geçmez.
 - Amaç: Ediz'in kendi müşterilerine güvenilir destek verebildiği kullanılabilir V1.
   Lisanslama/abonelik veya geniş yönetim paneli şu an öncelik değildir.
 - Faz 1, 2 ve 3 kabulü tamamlandı. **Faz 4 güvenlik sertleştirmesi devam ediyor.**
-- Faz 4'ün önemli kod ve politika işleri hazır; gerçek Pi arm64 deployment ve
-  Windows release kabulü henüz tamamlanmadı. Windows için depo sahibinin
-  2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub attestation ile
-  doğrulanan provenance yolu (bölüm 6B).
+- Faz 4'ün önemli kod ve politika işleri hazır. Pi production 2026-10-12'de
+  doğrulanmış Faz 4 container'larıyla wire v3'e geçti; Windows release kabulü
+  (temiz Windows 10/11) ve birkaç production kanıtı henüz tamamlanmadı. Windows
+  için depo sahibinin 2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub
+  attestation ile doğrulanan provenance yolu (bölüm 6B).
 - Installer ve otomatik güncelleme Faz 5; soak ve GPU/ağ matrisi Faz 6 kapsamındadır.
 - GitHub: <https://github.com/EddizEge/ediz-remote> — public, varsayılan dal `main`.
 - Yerel proje: `C:\Users\Eddiz\Remote Desk`.
@@ -107,9 +108,20 @@ Teslim anındaki önceki aday (artık yerinde değil):
   HIGH/CRITICAL 0, `gatePassed=true`, manifest SHA-256
   `FCC5988740E9204478C3BA5BC3FF0B3117DB1A576D7AD68FD2822022B025782B`.
 - DB updated `2026-10-11T01:13:45Z`, downloaded `2026-10-11T02:05:21Z`.
-- Yalnız build/scan yapıldı; canlı servislere dokunulmadı, **deployment yapılmadı**.
-  Deploy anında kapı yeniden çalıştırılır; secret dosyaları/`.env`/audit volume
-  hazırlığı operatör adımıdır.
+- Bu koşu yalnız build/scan yaptı.
+
+### Pi production deployment (2026-10-12)
+
+- Kaynak `abcaab9`; deploy öncesi kapı yeniden 3/3 HIGH/CRITICAL 0, manifest
+  SHA-256 `BFF1492E5FEF9DCA4150305012A5997D125255290273B4E591BB28471E040521`
+  (DB updated `2026-10-11T19:06:46Z`, downloaded `2026-10-12T00:22:02Z`).
+- `npm run security:container:deploy` → `container_deployment:passed`. Application
+  `sha256:48f0054668ad…` ve coturn `sha256:730f47e0a229…` `healthy`; UID 1000,
+  read-only, `cap_drop: ALL`, `no-new-privileges`; audit volume `1000:1000 0700`;
+  secret dosyaları `1000:1000 0400` (secret/`.env` hazırlığı operatör adımıydı).
+- Dış test: `/health` 200, v3 kabul, v2/alt protokolsüz `426`, yabancı origin `403`.
+  Eski (v3 öncesi) image geri dönüş için host'ta tutuluyor. Ayrıntı
+  `docs/CONTAINER_RELEASE.md`.
 
 `artifacts/`, `.tools/`, secret dosyaları, bağımlılıklar ve build çıktıları
 GitHub'a dahil değildir. Temiz klonda bunların bulunmaması beklenir.
@@ -214,10 +226,15 @@ sırayla, erişim ve gerçek kanıt bulunduğunda tamamla. Fuzz katmanı, 326 te
 durum makinesi matrisi ve `docs/PHASE4_ACCEPTANCE.md` 2026-10-09'da tamamlandı
 (toplu `npm test` 576 + 1 atlanan). 2026-10-11'de Pi arm64 kapısı geçti ve ilk
 attest edilmiş GitHub Windows yayını (`windows-v0.1.0.1` taslağı) bağımsız
-doğrulandı; kalan Faz 4 kabulü Pi deploy smoke'u ve temiz Windows 10/11 girdisine
-bağlıdır.
+doğrulandı; 2026-10-12'de Pi production'a doğrulanmış deploy yapıldı. Kalan Faz 4
+kabulü: temiz Windows 10/11 denemesi (gerçek oturum dahil), gerçek oturum sonrası
+production log/audit örneği ve audit 503/restart davranışının izole doğrulaması.
 
 ### A. Pi arm64 container kabulü
+
+Durum (2026-10-12): 1–4 tamamlandı (yukarıdaki deployment kaydı). Kalan 5: audit
+arızasında 503/restart izole ortamda; coturn stdout suppression ve dış HTTPS/WSS
+doğrulandı. Yeniden deploy'da aynı akış: kapı tazelenir, `security:container:deploy`.
 
 1. Mevcut production sürümü, Compose proje adları, health, secret sahiplik/izinleri
    ve audit volume durumunu salt-okunur doğrula. Pi erişimi bu dosyada yoktur;
@@ -273,8 +290,9 @@ SmartScreen uyarısı kalır (ER-T13 artık riski kabul edildi).
    Authenticode kabulünü tamamlandı sayma.
 
 Wire v3 rollout'ta web/signaling/desktop birlikte güncellenmelidir. Pi'de daha
-önce direct/recovery/relay kabulü yapıldı; ancak **bugünkü canlı sürüm bu teslimde
-kontrol edilmedi**. Kaynak kodun güncelliğini canlı production'a eşitleme.
+önce direct/recovery/relay kabulü yapıldı. 2026-10-12'de production v3'e geçti;
+v3 öncesi EXE'ler bağlanamaz. Kaynak kodun güncelliğini canlı production'a
+eşitleme; canlı sürümü her seferinde container etiketlerinden doğrula.
 
 ## 7. Kapsam dışında kalanlar ve teslim alışkanlığı
 

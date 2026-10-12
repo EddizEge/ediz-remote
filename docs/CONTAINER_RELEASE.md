@@ -199,3 +199,33 @@ build/scan yaptı; çalışan servislere dokunulmadı ve deployment yapılmadı.
   `security:container:deploy` tüketicisinden geçen iki servisli deployment,
   application/coturn health, canlı coturn stdout suppression ve audit
   503/restart davranışının kaydı.
+
+## 2026-10-12 Pi production deployment kanıtı
+
+Production Pi Faz 4 öncesi kaynaktan derlenmiş eski düzenden bu belgedeki
+doğrulanmış akışa geçirildi. Kaynak `abcaab9`. Kapı deploy'dan hemen önce yeniden
+çalıştırıldı: `linux/arm64`, 3/3 hedef HIGH/CRITICAL `0`, `passed`.
+
+- Manifest SHA-256
+  `BFF1492E5FEF9DCA4150305012A5997D125255290273B4E591BB28471E040521`; Trivy DB
+  `updatedAt` `2026-10-11T19:06:46Z`, `downloadedAt` `2026-10-12T00:22:02Z`.
+  Application `sha256:48f0054668ad…5a8a` ve coturn `sha256:730f47e0a229…0a59`
+  image ID'leri 2026-10-11 koşusuyla aynıdır (aynı içerikten tekrarlanabilir build).
+- Secret dosyaları ve `.env` hazırlandı (TURN ve audit HMAC anahtarı UID 1000,
+  `0400`; değerler hiçbir çıktıya yazılmadı). Eski uygulama Compose projesi
+  durduruldu; eski image'lar geri dönüş için yerinde tutuldu.
+- `npm run security:container:deploy` → `container_deployment:passed`. Çalışan iki
+  container manifest image ID'si ve manifest SHA-256 etiketiyle eşleşir; ikisi de
+  `healthy`, UID/GID `1000:1000`, read-only rootfs, `cap_drop: ALL`, ek
+  capability yok, `no-new-privileges`, PID sınırı 256.
+- Audit volume `1000:1000`, `0700` ile oluşturuldu (henüz audit olayı yok).
+- Log: application çıktısı tek yapılandırılmış satırdır (`service.ready`), IPv4
+  benzeri değer yok; coturn Docker log sürücüsü `none` ve `TURN_LOG_OUTPUT=discard`.
+- Dış HTTPS/WSS (Cloudflare Tunnel üzerinden, Pi dışından): `/health` 200;
+  `ediz-remote.v3` site ve WebView2 origin'iyle kabul, `ediz-remote.v2` ve alt
+  protokolsüz istek `426`, yabancı origin `403`; CSP, `nosniff`,
+  `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, Permissions-Policy,
+  COOP/CORP mevcut. HSTS başlığı uygulamada yoktur (gerekirse Cloudflare'de).
+- Kalan: gerçek oturum trafiği sonrası production log/audit örneği ve audit
+  arızasında 503/restart davranışının izole ortamda doğrulanması (canlı
+  servisle arıza enjeksiyonu yapılmaz).
