@@ -447,14 +447,48 @@ bağlı ve bağlı değilken 13 senaryo — doğrudan P2P + kontrol/imleç/revok
 zorlanmış relay, relay'de görüntü kurulamadan guest kaybı (ER-T15'in asıl
 senaryosu), onaydan 1,5/2,5 sn sonra ve akış sırasında ani guest kaybı, üç tur
 "Görüntüyü yeniden dene". Çökme olayı ve dump yok. `windows-v0.1.0.2`
-2026-10-12T04:26:20Z'de yayımlandı (Latest). Sürüm notlarına iki bilinen sorun
+2026-10-12T04:26:20Z'de yayımlandı (06:05Z'ye kadar Latest). Sürüm notlarına iki bilinen sorun
 eklendi: relay'de ICE yenilemesinin lane yalıtımı (ER-T16) ve ilk oturumda Windows
 Güvenlik Duvarı izin penceresi (yeni EXE yolu ilk kez dinleyen soket açtığında;
 uygulama hatası değildir).
 
-Kalan: ER-T16 düzeltmeli yayın (sequence 3), temiz Windows 10/11 makinesinde
-indirme + çalıştırma + SmartScreen davranışı kanıtı. Bu alınmadan kriter
-karşılanmış sayılmaz.
+### ER-T16 düzeltmeli koşular (2026-10-12)
+
+ICE yenilemesinin lane yalıtımı ve görüntü hattı kurtarması için iki koşu daha
+yapıldı. İkisi de aynı bağımsız doğrulamadan geçti: geliştirme makinesinde, taslaktan
+indirilen dört dosya için en sıkı `gh attestation verify` politikası başarılı; zip
+içindeki EXE tekil EXE ile aynı; zip'ten açılan ağaçta `verify-provenance`
+(taban = sequence) `WINDOWS_RELEASE_PROVENANCE_VERIFY_OK`.
+
+- Run `38204145851` (`4f848f3`, sequence `3`; lane başına ICE yenilemesi `4d4b470`).
+  CI'da npm 600 + 1 atlanan, native 54 + 1 atlanan, desktop 113, release 234.
+  Production'da doğrudan 5/5, zorlanmış relay 4/5 (birinde host'ta elle
+  "Görüntüyü yeniden dene" gerekti). `windows-v0.1.0.3` **taslak** kaldı.
+- Run `38206406764` (`2ebd1ee`, sequence `4`; ek olarak taşıma düşüşünde sınırlı
+  otomatik yeniden offer `554207f`). CI'da npm 607 + 1 atlanan, native 54 + 1
+  atlanan, desktop 120, release 234. Production'da web `2ebd1ee` ile doğrudan +
+  kontrol 9/9, zorlanmış relay 6/8; kalan iki relay hatası guest tarafındaki geç
+  aday yarışıydı ve yalnız web'de düzeltildi (`75d530b`, Pi'de `0bdd4d2`). Aynı
+  EXE web `0bdd4d2` ile zorlanmış relay + kontrol 5/5 geçti (görüntü 3,1–4,3 sn).
+  `windows-v0.1.0.4` 2026-10-12T06:05:05Z'de yayımlandı (Latest).
+
+| Sürüm | Dosya | Boyut | SHA-256 |
+|---|---|---|---|
+| 0.1.0.3 | `EdizRemote.exe` | `184864000` | `4b02fee71d9b4fdea5556daf900f956bfa90c39807903cfd6685dc87ec2be35b` |
+| 0.1.0.3 | `EdizRemote.win-x64.zip` | `79939932` | `773db16c156aa3be076841fb4554884096a0dd8e423e1af7aaf0a0d88f7e666f` |
+| 0.1.0.3 | `EdizRemote.win-x64.provenance.json` | `2724` | `fc199379e8cb338927c8d09e3c998a2ab532af0e346d12d3dd9044ec81985a40` |
+| 0.1.0.3 | `EdizRemote.win-x64.SHA256SUMS` | `1188` | `58c47b2c2eecdbccd06a45bedf44039ecacb834adb96ae10f9c024f7e3d130ea` |
+| 0.1.0.4 | `EdizRemote.exe` | `184864000` | `f53bc130a2ebf3c30575721ec814a1091eac64fecf88be766d782953846f040b` |
+| 0.1.0.4 | `EdizRemote.win-x64.zip` | `79940022` | `0340e38b96371a7e6a6fded2855e9e170bfcaa42881b4380863cb8c246ddbc75` |
+| 0.1.0.4 | `EdizRemote.win-x64.provenance.json` | `2724` | `b1d4b28b7694d681136c2fb1874d6e763c70dd9584cea86e1f856f124823352c` |
+| 0.1.0.4 | `EdizRemote.win-x64.SHA256SUMS` | `1188` | `0a1242bcf36c7cc73fb65f8337cbc0f52c720b3e1f7e1964a5a7d56bdacade15` |
+
+EXE kimlikleri: `ProductVersion 0.1.0+4f848f3008369cc9b0e5338b2206df60a19276ea`,
+`FileVersion 0.1.0.3` ve `ProductVersion 0.1.0+2ebd1ee925c2e7fad08baae12d1aa4552fdbdde4`,
+`FileVersion 0.1.0.4`; ikisi de Authenticode `NotSigned`.
+
+Kalan: temiz Windows 10/11 makinesinde indirme + çalıştırma + SmartScreen
+davranışı kanıtı. Bu alınmadan kriter karşılanmış sayılmaz.
 
 ## Dağıtım ve kalan production engeli
 

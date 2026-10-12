@@ -18,8 +18,7 @@ Kaynaklar: [`AGENTS.md`](../AGENTS.md) §5 ve §7 Faz 4,
 
 | Bloklayıcı | Etkilediği kabul | Eksik girdi |
 |---|---|---|
-| ICE yenilemesinde lane yalıtımı (ER-T16): bir lane'in (ör. native-video) `refresh_ice` isteğiyle gelen yeni `ice_configuration`, isteyen taraftaki sağlıklı genel peer'i de yeniden kuruyor; karşı tarafın güvenilir DataChannel'ı uzak SCTP abort'uyla `error` verip kalıcı fatal latch'e düşüyor ve oturum "Bağlantıyı yenile" beklemede kalıyor. 2026-10-12 production'da zorlanmış relay oturumlarında 6 kez görüldü (iki yönde; host'taki "Görüntüyü yeniden dene" de tetikliyor). `windows-v0.1.0.1` ve `0.1.0.2`'de vardır | Yayın kalitesi; relay/kurtarma kullanılabilirliği | Lane başına yenileme düzeltmesi, web'in Pi'ye deploy'u, yeni Windows yayını (sequence 3) ve relay oturum tekrarı |
-| Yayın adayının temiz Windows 10/11 makinesinde indirilip çalıştırılması, SmartScreen davranışının kaydı ve gerçek oturum. GitHub `windows-release` koşuları, attestation ve bağımsız `verify-provenance` 2026-10-11/12'de; `windows-v0.1.0.2` 2026-10-12'de yayımlandı ve production üzerinden gerçek oturumlar geliştirme makinesinde geçti | Kriter 5 | Temiz Windows 10/11 test makinesi |
+| Yayın adayının temiz Windows 10/11 makinesinde indirilip çalıştırılması, SmartScreen davranışının kaydı ve gerçek oturum. GitHub `windows-release` koşuları, attestation ve bağımsız `verify-provenance` 2026-10-11/12'de; `windows-v0.1.0.4` 2026-10-12'de yayımlandı ve production üzerinden gerçek oturumlar geliştirme makinesinde geçti | Kriter 5 | Temiz Windows 10/11 test makinesi |
 | (İleride) Gerçek OV/EV store/HSM sertifikasıyla EXE + katalog Authenticode imzası ve RFC3161 timestamp'i | Yayıncı güveni; Faz 4 kabulünü artık bloklamaz (ER-T13 artık risk kabulü) | OV/EV code signing sertifikası ve güvenilir RFC3161 sağlayıcısı |
 
 Audit arızasında 503/restart davranışının izole doğrulaması ve gerçek oturum
@@ -33,6 +32,31 @@ testinde production ile aynı imzayla üretildi. Düzeltme (`fe10421`, `fa24b20`
 sonrası 2560×1440 teardown stresi 3 × 300 sn temiz; erteleme kapatılan karşılaştırma
 sürümü aynı imzayla ~40 sn'de çöktü. Düzeltmeli `windows-v0.1.0.2` production
 üzerinden 13 senaryoda (asıl çökme senaryosu dahil) çökmedi.
+
+ICE yenilemesindeki lane yalıtımı hatası (ER-T16) 2026-10-12'de kapandı. Bir
+lane'in `refresh_ice` yanıtı isteyen taraftaki sağlıklı genel peer'i de yeniden
+kuruyor, karşı tarafın güvenilir DataChannel'ı uzak SCTP abort'uyla fatal latch'e
+düşüyordu. Üç adımda düzeltildi:
+
+- `4d4b470`: lane başına ICE yenilemesi.
+- `554207f`: WPF native eşinin taşıma düşüşü `native_transport_failed` olarak
+  sınırlı otomatik yeniden offer'a çevrildi. Guest, geç adayla canlanan alıcıyı
+  kapatmıyor.
+- `75d530b`: hiç bağlanmamış guest alıcısı, host'un ~1 sn geç gelen
+  `srflx`/`relay` adayları için 5 sn tolerans tanıyor.
+
+Web Pi'ye üç kez doğrulanmış deploy akışıyla alındı; `windows-v0.1.0.4` yayımlandı.
+Son production serisinde zorlanmış relay + kontrol oturumları 5/5 geçti; 55
+production koşusunun hiçbirinde uygulama çökmedi. Ayrıntı "Doğrulama tabanı"
+bölümündedir.
+
+Aynı gece görülen ikinci erişilebilirlik hatası (ER-T17) da kapandı: WebView2
+tarayıcı süreci çöktükten sonra "Yeniden dene" arayüzü kuramıyordu. Kök neden,
+çökmüş WPF `WebView2` denetiminin `CoreWebView2` erişiminde attığı
+`InvalidOperationException` idi. Düzeltme (`f320de8`) eski denetimin
+`CoreWebView2` üyesine dokunmadan denetimi baştan kurar; fail-closed davranış ve
+yalnız kullanıcıyla başlayan retry aynı kaldı. Bu PC'de tetikleyen, oyun
+kaplaması kancasının (RTSS) WebView2'yi açılışta ara sıra çökertmesiydi.
 
 Tablo tabanlı süresi geçmiş/replay durum makinesi matrisi 2026-10-09'da
 tamamlandı (`20b972b`); artık bloklayıcı değildir.
@@ -58,19 +82,20 @@ aktarma `425abc9` içinde gelir. 2026-10-09 işleri ayrı commit'lerdedir.
 
 | # | Kriter | Kanıt (test dosyası / komut) | Sonuç, tarih | Commit | Kanıt türü | Durum | Eksik girdi |
 |---|---|---|---|---|---|---|---|
-| 1 | Onaysız veya süresi geçmiş oturum ekran/control sinyali aktaramaz | `services/signaling/test/stateMachine.test.ts` (durum × rol × mesaj matrisi: oturumsuz, bekleyen, reddedilmiş, onaylı, revoke sonrası, bitmiş, kod TTL'i geçmiş, askıda, grace aşımı, döndürülmüş resume token), `services/signaling/test/server.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/session/useSignaling.test.ts`; `npm test`. Her hücrede gönderene dönen yanıt ve diğer bütün soketlerin aldığı mesajların tam listesi; yetkisiz hücrede `signal`/onay/ICE sızıntısı yok | 2026-10-09: durum makinesi 326/326, signaling 407 + 1 atlanan, toplu `npm test` 576 + 1 atlanan; 10 kasıtlı sunucu bozulmasının 10'u da matriste düştü. Canlı fuzz'da 2.500 kimliksiz frame sonrası hiçbir sokete signal/onay ulaşmadı. Bulgu: kodu bilen üçüncü kişi `join_session` ile kod TTL'i geçmiş onaylı ya da host'u askıdaki oturumu bitirebiliyordu; düzeltildi | `50ae6f6`, `5b8b314`, `20b972b`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | v3 web/signaling/desktop paketinin production'a alınması ve canlı doğrulama (Pi onayı) |
+| 1 | Onaysız veya süresi geçmiş oturum ekran/control sinyali aktaramaz | `services/signaling/test/stateMachine.test.ts` (durum × rol × mesaj matrisi: oturumsuz, bekleyen, reddedilmiş, onaylı, revoke sonrası, bitmiş, kod TTL'i geçmiş, askıda, grace aşımı, döndürülmüş resume token), `services/signaling/test/server.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/session/useSignaling.test.ts`; `npm test`. Her hücrede gönderene dönen yanıt ve diğer bütün soketlerin aldığı mesajların tam listesi; yetkisiz hücrede `signal`/onay/ICE sızıntısı yok | 2026-10-09: durum makinesi 326/326, signaling 407 + 1 atlanan, toplu `npm test` 576 + 1 atlanan; 10 kasıtlı sunucu bozulmasının 10'u da matriste düştü. Canlı fuzz'da 2.500 kimliksiz frame sonrası hiçbir sokete signal/onay ulaşmadı. Bulgu: kodu bilen üçüncü kişi `join_session` ile kod TTL'i geçmiş onaylı ya da host'u askıdaki oturumu bitirebiliyordu; düzeltildi | `50ae6f6`, `5b8b314`, `20b972b`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | Production'da kasıtlı onaysız/süresi geçmiş sinyal denemesi (v3 paketi 2026-10-12'den beri production'da; gerçek oturumlar onay akışından geçti) |
 | 2 | Eski/replay control mesajları etkisizdir | `services/signaling/test/stateMachine.test.ts` (negotiation replay: aynı offer tekrarı, ikinci answer, yeni offer sonrası eski candidate, yanlış lane, ters yön, 257. offer, resume boyunca korunan durum; eski resume token replay'i), `apps/web/src/features/webrtc/peerProtocol.test.ts`, `apps/web/src/features/webrtc/negotiation.test.ts`, `apps/windows-desktop.Tests/ControlInputTests.cs`, `services/signaling/test/server.test.ts`. Ortak session `sequence`, rate reddinde ilerlemeyen watermark, yalnız başarılı uygulamada ilerleyen native watermark | 2026-10-09: durum makinesi 326/326, web 106, signaling 407 + 1 atlanan, desktop 113/113 | `50ae6f6`, `20b972b`, `425abc9`, `6bdf2a5` | Birim/entegrasyon, fuzz | Karşılandı (test kapsamı) | Production control soak ölçümü (ER-T07) |
 | 3 | Fuzz/bozuk mesaj testleri servisi veya host'u düşürmez | `packages/protocol/test/fuzz.test.ts`, `services/signaling/test/fuzz.test.ts`, `apps/web/src/features/webrtc/peerProtocol.fuzz.test.ts`, `apps/windows-desktop.Tests/BridgeFuzzTests.cs`; yardımcı `packages/protocol/test/fuzzSupport.ts` | 2026-10-09: 24 fuzz/regresyon testi; protocol 18, web 106, signaling 81 + 1 atlanan, desktop 113/113. Canlı kampanya sonrası health ve temiz çiftin relay'i sağlam. İki gerçek bulgu kapatıldı (iç içe `__proto__`, WPF eşlenmemiş surrogate istisnası); oracle olarak eski korumalar testte düştü | `6bdf2a5` | Fuzz, birim/entegrasyon | Karşılandı (test kapsamı) | Production negotiation-churn/soak ölçümü (ER-T06); fiziksel host üzerinde fuzz çalıştırılmadı |
 | 4 | Secret/token/SDP içeren üretim logu bulunmaz | `services/signaling/test/securityAudit.test.ts`, `services/signaling/test/securityAuditConfig.test.ts`, `services/signaling/test/server.test.ts`, `scripts/safe-output.test.mjs`, `scripts/browser-turn-simulation-redaction.test.mjs`, `apps/windows-host.Tests/SafeHostDiagnosticsTests.cs`; `npm run security-output:test`. Strict sekiz alanlı JSONL audit, coturn `no-stdout-log` | 2026-10-09: güvenli çıktı 10/10, signaling 81 + 1 atlanan; sentinel testleri stdout/stderr, audit ve TURN/browser probe tanılarını kapsar. 2026-10-12 production: application çıktısı tek yapılandırılmış satır (`service.ready`), IPv4 benzeri değer yok; coturn log sürücüsü `none` + `TURN_LOG_OUTPUT=discard`; audit volume `1000:1000` `0700`; secret dosyaları `1000:1000` `0400`. Dokuz gerçek production oturumundan (doğrudan P2P, TURN relay, kontrol/revoke, arıza yolları) sonra Pi'de salt-okunur sayım: audit 35 kayıt, yalnız sekiz izinli alan, `protocolVersion` 3; application log hâlâ tek satır; IPv4/IPv6/6 haneli sayı/SDP-candidate/secret sözcüğü/dosya yolu deseni 0. Audit yazım arızası tatbikatı (`npm run security:audit-drill`, Docker Desktop amd64, izole): `/health` ve yeni upgrade 13–46 ms içinde `503`, çıkış kodu 1 (`audit_unavailable`, ardından `shutdown_failed`), arıza sürerken `startup_failed` restart döngüsü, geri almada 5–8 sn'de `healthy`; dört koşu `passed` | `425abc9`, `abcaab9`, `90241f2` | Birim/entegrasyon, yerel gerçek ortam, production | Karşılandı | Gelecekteki destek paketi testi (Faz 6) |
-| 5 | Yayınlanan binary bütünlüğü doğrulanabilir | Depo sahibi kararı (2026-10-11): ücretli sertifika gelene kadar **provenance yolu** — GitHub'da derlenen ağaç için SLSA build provenance attestation + provenance manifesti + SHA256SUMS ([`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-yolu)). `scripts/windows-release.test.ps1` (`npm run release:windows:test`), `npm run release:windows:provenance`, `npm run release:windows:verify-provenance`; workflow `.github/workflows/windows-release.yml`. Authenticode yolu (`release:windows:sign`/`verify`) değişmeden kalır | 2026-10-11: release politika/katalog/provenance 234/234 (123 provenance; 3 kasıtlı mutasyon düştü). Temiz ağaçta `3091505`'ten sequence 1 gerçek aday (`NotSigned`): `provenance` → 12 dosyalık manifest + SHA256SUMS, deterministik; kirli ağaç → `provenance_dirty_source`; `verify-provenance` → attestation olmadığı için `provenance_attestation_invalid`, kurcalanmış ağaç → `provenance_tree_mismatch`. 2026-10-11 ilk GitHub koşusu (run `38107001498`, `8701f78`, sequence 1): CI kapıları, attestation ve CI içi `verify-provenance` geçti, `windows-v0.1.0.1` taslağı (EXE SHA-256 `b1e77dc5…f516`, zip `3e995246…783b`); ayrı makinede dört dosya en sıkı `gh attestation verify` politikasıyla doğrulandı, yanlış commit ile düştü; zip ağacında `verify-provenance` OK, değiştirilmiş dosya → `provenance_tree_mismatch`, taban 2 → `release_rollback_rejected`. 2026-10-12: aynı zip (SHA256SUMS 12/12) geliştirme makinesinde production v3 üzerinden dokuz gerçek oturumda kullanıldı (doğrudan P2P ve TURN relay 2560×1440 H.264, kontrol/revoke); birinde native çökme (ER-T15). 2026-10-12 ikinci GitHub koşusu (run `38200657904`, `fa24b20`, sequence 2; CI'da npm 591 + 1, native 54 + 1, desktop 113, release 234, `security:audit`): ayrı makinede 4/4 en sıkı `gh attestation verify`, yanlış commit düştü, zip ağacında `verify-provenance` (taban 2) OK; EXE `0ed698ec…66f0`, `FileVersion 0.1.0.2`, `NotSigned`; production üzerinden 13 senaryoda çökme yok; `windows-v0.1.0.2` yayımlandı (Latest). 2026-10-09 Authenticode tabanı: `verify` → `catalog_missing` | `971506f`, `8c209df`, `893de84`, `3091505`, `8701f78`, `fa24b20` | Birim/entegrasyon, yerel gerçek ortam, GitHub-hosted build, production | Kısmen — GitHub derlemesi, attestation, bağımsız doğrulama ve yayın tamam; temiz Windows 10/11 kanıtı bekliyor | Temiz Windows 10/11 makinesinde indirme/çalıştırma ve SmartScreen kaydı. Yayıncı güveni/SmartScreen artık risk olarak kabul edildi (ER-T13); Authenticode için OV/EV sertifika + RFC3161 ileride |
+| 5 | Yayınlanan binary bütünlüğü doğrulanabilir | Depo sahibi kararı (2026-10-11): ücretli sertifika gelene kadar **provenance yolu** — GitHub'da derlenen ağaç için SLSA build provenance attestation + provenance manifesti + SHA256SUMS ([`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-yolu)). `scripts/windows-release.test.ps1` (`npm run release:windows:test`), `npm run release:windows:provenance`, `npm run release:windows:verify-provenance`; workflow `.github/workflows/windows-release.yml`. Authenticode yolu (`release:windows:sign`/`verify`) değişmeden kalır | 2026-10-11: release politika/katalog/provenance 234/234 (123 provenance; 3 kasıtlı mutasyon düştü). Temiz ağaçta `3091505`'ten sequence 1 gerçek aday (`NotSigned`): `provenance` → 12 dosyalık manifest + SHA256SUMS, deterministik; kirli ağaç → `provenance_dirty_source`; `verify-provenance` → attestation olmadığı için `provenance_attestation_invalid`, kurcalanmış ağaç → `provenance_tree_mismatch`. 2026-10-11 ilk GitHub koşusu (run `38107001498`, `8701f78`, sequence 1): CI kapıları, attestation ve CI içi `verify-provenance` geçti, `windows-v0.1.0.1` taslağı (EXE SHA-256 `b1e77dc5…f516`, zip `3e995246…783b`); ayrı makinede dört dosya en sıkı `gh attestation verify` politikasıyla doğrulandı, yanlış commit ile düştü; zip ağacında `verify-provenance` OK, değiştirilmiş dosya → `provenance_tree_mismatch`, taban 2 → `release_rollback_rejected`. 2026-10-12: aynı zip (SHA256SUMS 12/12) geliştirme makinesinde production v3 üzerinden dokuz gerçek oturumda kullanıldı (doğrudan P2P ve TURN relay 2560×1440 H.264, kontrol/revoke); birinde native çökme (ER-T15). 2026-10-12 ikinci GitHub koşusu (run `38200657904`, `fa24b20`, sequence 2; CI'da npm 591 + 1, native 54 + 1, desktop 113, release 234, `security:audit`): ayrı makinede 4/4 en sıkı `gh attestation verify`, yanlış commit düştü, zip ağacında `verify-provenance` (taban 2) OK; EXE `0ed698ec…66f0`, `FileVersion 0.1.0.2`, `NotSigned`; production üzerinden 13 senaryoda çökme yok; `windows-v0.1.0.2` yayımlandı. 2026-10-12 ER-T16 düzeltmeli koşular: run `38204145851` (`4f848f3`, sequence 3; taslak kaldı) ve run `38206406764` (`2ebd1ee`, sequence 4; CI'da npm 607 + 1, native 54 + 1, desktop 120, release 234). İkisinde de ayrı makinede 4/4 en sıkı `gh attestation verify` ve zip ağacında `verify-provenance` (taban 3 / 4) OK; EXE `f53bc130…040b`, `FileVersion 0.1.0.4`, `NotSigned`; production üzerinden doğrudan ve zorlanmış relay oturumları geçti; `windows-v0.1.0.4` yayımlandı (Latest). 2026-10-09 Authenticode tabanı: `verify` → `catalog_missing` | `971506f`, `8c209df`, `893de84`, `3091505`, `8701f78`, `fa24b20`, `4f848f3`, `2ebd1ee` | Birim/entegrasyon, yerel gerçek ortam, GitHub-hosted build, production | Kısmen — GitHub derlemesi, attestation, bağımsız doğrulama ve yayın tamam; temiz Windows 10/11 kanıtı bekliyor | Temiz Windows 10/11 makinesinde indirme/çalıştırma ve SmartScreen kaydı. Yayıncı güveni/SmartScreen artık risk olarak kabul edildi (ER-T13); Authenticode için OV/EV sertifika + RFC3161 ileride |
 
 Gerekçeler:
 
 - Kriter 1 ve 2 için Faz 4 planı ve tehdit modelinin istediği tablo tabanlı
   süresi geçmiş/replay matrisi 2026-10-09'da tamamlandı ve gerçek bir
   erişilebilirlik bulgusunu kapattı; bu yüzden test kapsamında `Karşılandı`dır.
-  Faz 4 web/signaling/desktop paketi henüz production'a alınmadığından production
-  kanıtı yoktur.
+  Faz 4 web/signaling/desktop paketi 2026-10-12'de production'a alındı ve gerçek
+  oturumlar onay akışından geçti. Production'da kasıtlı onaysız/replay denemesi
+  yapılmadığından bu kriterlere production kanıt türü eklenmedi.
 - Kriter 3 bir test kriteridir ve 2026-10-09 fuzz matrisi dört katmanda geçmiştir;
   production soak bu kriterin değil ER-T06'nın kalan işidir.
 - Kriter 4 "üretim logu" ister; 2026-10-12'de dokuz gerçek production oturumundan
@@ -80,13 +105,16 @@ Gerekçeler:
 - 2026-10-12 production oturumlarında görülen native çökme (ER-T15) kriter 3'ün
   fuzz kapsamında değil, ağ arıza yolundaki kaynak yaşam döngüsü yarışıydı; aynı
   gün düzeltildi (yukarıdaki not). ICE yenilemesindeki lane yalıtımı hatası
-  (ER-T16) da bir erişilebilirlik/kurtarma hatasıdır; ayrı bloklayıcıdır.
+  (ER-T16) da bir erişilebilirlik/kurtarma hatasıydı; aynı gün düzeltildi ve
+  production'da doğrulandı.
 - Kriter 5 için depo sahibi 2026-10-11'de Authenticode yerine GitHub attestation
   tabanlı provenance yolunu seçti. Kod ve testler hazırdır; ilk GitHub koşusu
   (`8701f78`, sequence 1) attest edilmiş `windows-v0.1.0.1` taslağını üretti ve
   dört dosya ayrı makinede `gh attestation verify` ile, ağaç `verify-provenance`
   ile doğrulandı. 2026-10-12'de çökme düzeltmeli ikinci koşu (`fa24b20`, sequence
-  2) aynı bağımsız doğrulamadan geçti ve `windows-v0.1.0.2` yayımlandı (Latest).
+  2) aynı bağımsız doğrulamadan geçti ve `windows-v0.1.0.2` yayımlandı. Aynı gün
+  ER-T16 düzeltmeli koşular (`4f848f3`, sequence 3, taslak; `2ebd1ee`, sequence 4)
+  de doğrulandı ve `windows-v0.1.0.4` yayımlandı (Latest).
   Temiz Windows 10/11 makinesinde çalıştırma kanıtı olmadığı için kriter hâlâ
   "Kısmen"dir. Yayıncı güveni ve SmartScreen uyarısı bu yolda kalır;
   kabul edilmiş artık risktir (ER-T13).
@@ -102,7 +130,7 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 | Global/IP kaynak kotaları ve signal/ICE/message rate limitleri | `services/signaling/test/rateLimit.test.ts`, `services/signaling/test/server.test.ts` | Tarihsel 2026-08-24 Dilim 2: signaling 38/38 (64 KiB, flood, bozuk UTF-8, derin JSON, takeover). Güncel 2026-10-09: signaling 81 + 1 atlanan | `425abc9` | Birim/entegrasyon | Kısmen | Production kapasite ölçümü |
 | Signaling stdout/stderr, JSONL audit ve TURN/browser probe tanılarında secret sentinel sızıntı testi | Kriter 4'teki dosyalar; `npm run security-output:test`; `npm run security:audit-drill` | 2026-10-09: güvenli çıktı 10/10, TURN 13/13. 2026-10-12 production: dokuz gerçek oturum sonrası audit 35 kayıt + application log 1 satır, hassas desen 0; audit arıza tatbikatı 503 → çıkış → restart → geri dönüş `passed` | `425abc9`, `90241f2` | Birim/entegrasyon, yerel gerçek ortam, production | Karşılandı | Gelecekteki destek paketi doğrulaması (Faz 6) |
 | Production npm/NuGet/container taraması, SBOM ve gerekçeli baseline | `npm run security:audit`, `npm run security:containers`, `scripts/container-security-audit.test.mjs` | 2026-10-09: npm + dört NuGet projesi 0 açık; container politika 22/22; yerel `linux/amd64` 3/3 hedef HIGH/CRITICAL `0`. 2026-10-11: Pi `linux/arm64` 3/3 hedef HIGH/CRITICAL `0`, CycloneDX + SPDX + Trivy JSON. 2026-10-12: deploy öncesi yeniden arm64 3/3 `0` (manifest `BFF1492E…0521`), `security:container:deploy` ile production; çalışan image ID'leri ve etiketleri manifestle eşleşir, iki health `healthy` | `d71b739`, `219cfc9`, `abcaab9` | Birim/entegrasyon, yerel gerçek ortam, production | Karşılandı | Operasyon: 48 saatlik tazelikle yeniden tarama ve güvenli digest yenileme |
-| Bütünlüğü ve kaynağı doğrulanabilir Windows artifact'i (Authenticode yerine 2026-10-11'den beri GitHub attestation + provenance manifesti) ve bağımsız hash/attestation doğrulaması | Kriter 5'teki dosya ve komutlar | 2026-10-11: 234/234 politika testi; ilk GitHub koşusu `windows-v0.1.0.1` taslağını attest etti; ayrı makinede dört dosyanın attestation'ı ve zip ağacında `verify-provenance` geçti, kurcalama/taban negatifleri düştü. 2026-10-12: çökme düzeltmeli `windows-v0.1.0.2` (sequence 2) aynı doğrulamadan geçti ve yayımlandı. Authenticode adayı `NotSigned`, katalog yok | `971506f`, `8c209df`, `893de84`, `3091505`, `8701f78`, `fa24b20` | Birim/entegrasyon, yerel gerçek ortam, GitHub-hosted build | Kısmen | Temiz Windows 10/11 makinesi |
+| Bütünlüğü ve kaynağı doğrulanabilir Windows artifact'i (Authenticode yerine 2026-10-11'den beri GitHub attestation + provenance manifesti) ve bağımsız hash/attestation doğrulaması | Kriter 5'teki dosya ve komutlar | 2026-10-11: 234/234 politika testi; ilk GitHub koşusu `windows-v0.1.0.1` taslağını attest etti; ayrı makinede dört dosyanın attestation'ı ve zip ağacında `verify-provenance` geçti, kurcalama/taban negatifleri düştü. 2026-10-12: çökme düzeltmeli `windows-v0.1.0.2` (sequence 2) aynı doğrulamadan geçti ve yayımlandı; ER-T16 düzeltmeli `windows-v0.1.0.4` (sequence 4) da geçti ve yayımlandı (Latest). Authenticode adayı `NotSigned`, katalog yok | `971506f`, `8c209df`, `893de84`, `3091505`, `8701f78`, `fa24b20`, `2ebd1ee` | Birim/entegrasyon, yerel gerçek ortam, GitHub-hosted build | Kısmen | Temiz Windows 10/11 makinesi |
 | Cloudflare origin/proxy policy ile gerçek HTTPS/WSS deployment testi | `services/signaling/test/server.test.ts` (origin, subprotocol, proxy spoof) | 2026-10-12 production, Pi dışından Cloudflare Tunnel üzerinden: `ediz-remote.v3` site ve WebView2 origin'iyle kabul; `ediz-remote.v2` ve alt protokolsüz istek `426`; yabancı origin `403`; CSP, `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, Permissions-Policy, COOP/CORP mevcut. Uygulama portu yalnız `127.0.0.1`; `CF-Connecting-IP` güveni yalnız tunnel arkasında açık | `425abc9`, `abcaab9` | Birim/entegrasyon, production | Karşılandı | HSTS uygulamada yok (isteğe bağlı, Cloudflare'de açılabilir) |
 | Faz 4 kabul kanıtlarının `docs/PHASE4_ACCEPTANCE.md` altında toplanması | Bu belge | 2026-10-09: ilk sürüm ve durum makinesi matrisi sonrası güncelleme | `51890cf` | — | Karşılandı | Pi, imza ve production kanıtı geldikçe güncellenir |
 
@@ -112,7 +140,8 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
   Yazılı tehdit modeli, zorunlu sürümlü alt protokol (bugün `ediz-remote.v3`,
   current/minimum 3/3, legacy fallback yok), origin allowlist, explicit
   `CF-Connecting-IP` güveni, strict/bounded SDP/ICE ve binary frame reddi.
-  SIPSorcery 10.0.16. Açık: paketin production'a birlikte alınması.
+  SIPSorcery 10.0.16. Paket 2026-10-12'de production'a birlikte alındı (Pi
+  web/signaling + yayımlanan Windows sürümü).
 - **[Dilim 2 — Kaynak kötüye kullanımı ve brute-force dayanıklılığı](PHASE4_PLAN.md#dilim-2--kaynak-kötüye-kullanımı-ve-brute-force-dayanıklılığı):**
   Global/IP socket ve session tavanları, ayrı token bucket kapsamları, bounded TTL
   sayaç haritaları, O(1) resume indeksi, strict `rate_limited`/`capacity_exceeded`
@@ -130,8 +159,9 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
   `security:containers` kapısı, store/HSM Authenticode modeli, SHA-256 Catalog v2,
   release kimliği ve anti-rollback/build provenance; 2026-10-11'de imzasız
   provenance (GitHub attestation) yolu, ilk attest edilmiş GitHub yayını
-  (`windows-v0.1.0.1` taslağı) ve Pi `linux/arm64` gerçek scan. Açık: Pi
-  deployment smoke'u ve temiz Windows 10/11 doğrulaması.
+  (`windows-v0.1.0.1` taslağı) ve Pi `linux/arm64` gerçek scan; 2026-10-12'de
+  doğrulanmış Pi production deployment'ları ile `windows-v0.1.0.2` ve
+  `windows-v0.1.0.4` yayınları. Açık: temiz Windows 10/11 doğrulaması.
 - **[Dilim 6 — Fuzz ve bozuk mesaj matrisi](PHASE4_PLAN.md#dilim-6--fuzz-ve-bozuk-mesaj-matrisi):**
   Bağımlılıksız seed'li fuzz yardımcısı; protokol, canlı signaling, web DataChannel
   ve WPF köprüsü kampanyaları; 326 testlik signaling durum makinesi matrisi ve bu
@@ -160,14 +190,20 @@ Kaynak: [`THREAT_MODEL.md` §11](THREAT_MODEL.md#11-faz-4-çıkış-kapıları).
 | 2026-10-12 | Native çökme kök nedeni ve düzeltmesi (ER-T15) | Yerel 2560×1440 encoder teardown stresi: düzeltme öncesi 38–71 sn'de, yalnız boşaltmayla 63 sn'de `c0000005` (`RTWorkQ` → `nvEncMFTH264x` → `RtlEnterCriticalSection`); düzeltmeli sürüm 3 × 300 sn (131–142 oturum, 0 hata), storm 45 sn, cycle 180 sn temiz; erteleme kapatılmış karşılaştırma ~40 sn'de aynı imzayla çöktü. Native 54 + 1 atlanan, desktop 113, toplu npm test, lint, build, publish geçti | Yerel gerçek ortam (GPU), birim/entegrasyon | `fe10421`, `fa24b20` |
 | 2026-10-12 | İkinci GitHub `windows-release` koşusu | Run `38200657904` (`fa24b20`, sequence 2): CI'da npm 591 + 1 atlanan, native 54 + 1, desktop 113, release 234, `security:audit`; attestation + CI içi `verify-provenance`. Ayrı makinede 4/4 `gh attestation verify` OK, yanlış commit düştü; zip ağacında `verify-provenance` (taban 2) OK | GitHub-hosted build, yerel gerçek ortam | `windows-v0.1.0.2`, 2026-10-12'de yayımlandı |
 | 2026-10-12 | Production gerçek oturum (`0.1.0.2`) | Yayın EXE'si cdb bağlı ve bağlı değilken 13 senaryo: doğrudan P2P + kontrol/imleç/revoke/ayrılma, zorlanmış relay (görüntü 3,6–3,8 sn), relay'de görüntü kurulamadan guest kaybı (asıl çökme senaryosu, 6 kez), onaydan 1,5/2,5 sn sonra ve akış sırasında ani guest kaybı, 3 tur "Görüntüyü yeniden dene" stresi. Çökme olayı 0, dump 0. Relay'de lane yalıtımı hatası bulundu (ER-T16) | Production (geliştirme makinesi, temiz Windows değil) | `fa24b20` paketi |
+| 2026-10-12 | ER-T16 düzeltmeleri | Üç şerit, her birinde yeni testlerin eski kodda kırmızı olduğu gösterildi: lane başına ICE yenilemesi (`4d4b470`; npm 600 + 1, desktop 113), WPF taşıma düşüşünde sınırlı otomatik yeniden offer ve guest'in canlanan alıcıyı koruması (`554207f`; npm 607 + 1, desktop 120), hiç bağlanmamış guest alıcısına 5 sn geç aday toleransı (`75d530b`; npm 614 + 1, web 129). Lint/build temiz | Birim/entegrasyon | `4f848f3`, `2ebd1ee`, `0bdd4d2` |
+| 2026-10-12 | Pi production deploy'ları (ER-T16) | Üç kez (`4f848f3`, `2ebd1ee`, `0bdd4d2`): her deploy öncesi arm64 kapısı 3/3 HIGH/CRITICAL `0`, `container_deployment:passed`, iki container `healthy`, restart 0; önceki application image geri dönüş için tutuldu. Canlı sürüm `0bdd4d2` (application `9abeca94…`, manifest `631431c4…`) | Production | Ayrıntı [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-12-er-t16-yeniden-deployları) |
+| 2026-10-12 | Üçüncü ve dördüncü GitHub `windows-release` koşuları | Run `38204145851` (`4f848f3`, sequence 3; CI'da npm 600 + 1, native 54 + 1, desktop 113, release 234) ve run `38206406764` (`2ebd1ee`, sequence 4; CI'da npm 607 + 1, native 54 + 1, desktop 120, release 234). İkisinde de ayrı makinede 4/4 en sıkı `gh attestation verify`, zip ağacında `verify-provenance` (taban 3 / 4) OK | GitHub-hosted build, yerel gerçek ortam | `windows-v0.1.0.3` taslak; `windows-v0.1.0.4` 2026-10-12'de yayımlandı (Latest) |
+| 2026-10-12 | Production gerçek oturum (ER-T16 sonrası) | Geliştirme makinesi, production v3, headless Edge guest. `0.1.0.3` + web `4f848f3`: doğrudan 5/5, zorlanmış relay 4/5. `0.1.0.4` + web `2ebd1ee`: doğrudan + kontrol 9/9, zorlanmış relay 6/8 (ikisinde host'un geç `srflx`/`relay` adayıyla yarış → `75d530b`). `0.1.0.4` + web `0bdd4d2`: zorlanmış relay + kontrol 5/5, görüntü 3,1–4,3 sn. Gece boyunca toplam 55 senaryo koşusunda uygulama çökmesi 0. Yedi koşu yerel bir oyun kaplaması kancasının (RTSS) WebView2'yi açılışta çökertmesine, beşi signaling `create_session` hız sınırına (test temposu) denk geldi; ürün hatası sayılmadı | Production (geliştirme makinesi, temiz Windows değil) | `2ebd1ee` paketi |
+| 2026-10-12 | WebView2 arayüz kurtarması (ER-T17) | `f320de8`: desktop 125/125 (yeni 5 vaka korumasız yardımcıyla 3 kırmızı). Yerel publish (sequence 0) ile production üzerinden: tarayıcı süreci öldürülünce "Yeniden dene" 1,7–2,1 sn'de arayüzü geri getirdi (iki ardışık çökme dahil), renderer öldürülünce 1,1 sn'de; kurtarılan arayüzde doğrudan P2P + kontrol/revoke/ayrılma oturumu geçti; uygulama çökmesi 0. Düzeltme öncesi `0.1.0.4`'te aynı adım anında "Windows web bileşeni başlatılamadı" verip kurtarmıyordu | Production (geliştirme makinesi, temiz Windows değil), birim/entegrasyon | `215e783` |
+| 2026-10-12 | Production log/audit (ER-T16 sonrası) | Pi'de salt-okunur: audit 278 kayıt, yalnız sekiz izinli alan, v3; IP/kod/SDP/secret deseni 0; application log 1 satır; coturn log sürücüsü `none`; iki container `healthy`, restart 0; audit dosyası `0600`, dizin `0700`, sahip UID 1000 | Production | Güncel |
 | 2026-10-11 | Birleşme sonrası `main` | Toplu 576 + 1 atlanan (TURN 13, güvenli çıktı 10, container 22, web 106, protocol 18, signaling 407 + 1 atlanan); release 234/234; lint/build temiz. Protokol rastgele JSON fuzz testi yüklü makinede ~26 sn sürdüğü için fuzz süre bütçesi 30 → 120 sn yapıldı; kapsam değişmedi | Birim/entegrasyon, fuzz | Güncel; `7fc258d` |
 
 2026-10-11 Pi arm64 kapısı yalnız build/scan yaptı; 2026-10-12 deployment, gerçek
 oturum ve log/audit satırları production'dır. Diğer koşular production ortamında
 yapılmamıştır. Fiziksel EXE/UI smoke 2026-09-02 ve 2026-10-09 koşularında
-çalıştırılmadı; 2026-10-12'de GitHub'da derlenen `windows-v0.1.0.1` ve
-`windows-v0.1.0.2` paketleriyle production üzerinden yapıldı (geliştirme makinesi;
-temiz Windows kanıtı değildir).
+çalıştırılmadı; 2026-10-12'de GitHub'da derlenen `windows-v0.1.0.1` ile
+`windows-v0.1.0.4` arasındaki paketlerle production üzerinden yapıldı (geliştirme
+makinesi; temiz Windows kanıtı değildir).
 
 ## Güncel artifact ve kanıt kimlikleri
 
@@ -221,14 +257,43 @@ Kaynak: [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-
 | SHA256SUMS | SHA-256 `964eb23173148c1ee4756cc2b8eb42a6383e28f6148ed87a2dbdf026f2ced41c` |
 | Doğrulama | 4/4 `gh attestation verify` (signer/source digest = commit, `github-hosted`); zip ağacında `verify-provenance` OK |
 
-### GitHub yayını (2026-10-12)
+### GitHub yayını `windows-v0.1.0.4` (2026-10-12, güncel)
+
+Kaynak: [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-yolu)
+("ER-T16 düzeltmeli koşular" alt bölümü).
+
+| Alan | Değer |
+|---|---|
+| Durum | **Yayımlandı (Latest)**, 2026-10-12T06:05:05Z; production üzerinden doğrudan ve zorlanmış relay oturumları geçti; temiz Windows 10/11 kanıtı yok |
+| Yayın | `windows-v0.1.0.4` (Actions run `38206406764`, `windows-2025`) |
+| Kaynak | `2ebd1ee925c2e7fad08baae12d1aa4552fdbdde4`, sequence `4` |
+| EXE | `184864000` bayt, SHA-256 `f53bc130a2ebf3c30575721ec814a1091eac64fecf88be766d782953846f040b`, `ProductVersion 0.1.0+2ebd1ee…`, `FileVersion 0.1.0.4`, `NotSigned` |
+| Zip (dağıtım birimi) | `79940022` bayt, SHA-256 `0340e38b96371a7e6a6fded2855e9e170bfcaa42881b4380863cb8c246ddbc75` |
+| Provenance manifesti | SHA-256 `b1d4b28b7694d681136c2fb1874d6e763c70dd9584cea86e1f856f124823352c` |
+| SHA256SUMS | SHA-256 `0a1242bcf36c7cc73fb65f8337cbc0f52c720b3e1f7e1964a5a7d56bdacade15` |
+| Doğrulama | 4/4 en sıkı `gh attestation verify` (signer/source digest = commit, `github-hosted`); zip ağacında `verify-provenance` (taban 4) OK |
+| Web eşi | Guest'in geç aday toleransı (`75d530b`) yalnız web'dedir; Pi'de `0bdd4d2` ile canlı |
+
+### GitHub taslağı `windows-v0.1.0.3` (2026-10-12)
+
+| Alan | Değer |
+|---|---|
+| Durum | GitHub'da derlendi, attest edildi ve doğrulandı; **taslak**, yayımlanmadı — relay'de görüntü hattı kurtarması eksikti, yerini `windows-v0.1.0.4` aldı |
+| Yayın | `windows-v0.1.0.3` (Actions run `38204145851`) |
+| Kaynak | `4f848f3008369cc9b0e5338b2206df60a19276ea`, sequence `3` |
+| EXE | `184864000` bayt, SHA-256 `4b02fee71d9b4fdea5556daf900f956bfa90c39807903cfd6685dc87ec2be35b`, `FileVersion 0.1.0.3`, `NotSigned` |
+| Zip | `79939932` bayt, SHA-256 `773db16c156aa3be076841fb4554884096a0dd8e423e1af7aaf0a0d88f7e666f` |
+| Provenance manifesti | SHA-256 `fc199379e8cb338927c8d09e3c998a2ab532af0e346d12d3dd9044ec81985a40` |
+| SHA256SUMS | SHA-256 `58c47b2c2eecdbccd06a45bedf44039ecacb834adb96ae10f9c024f7e3d130ea` |
+
+### GitHub yayını `windows-v0.1.0.2` (2026-10-12)
 
 Kaynak: [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#provenance-github-attestation-yolu)
 ("İkinci GitHub koşusu ve yayın" alt bölümü).
 
 | Alan | Değer |
 |---|---|
-| Durum | **Yayımlandı (Latest)**, 2026-10-12T04:26:20Z; production üzerinden gerçek oturumlar geçti; temiz Windows 10/11 kanıtı yok |
+| Durum | Yayımlandı, 2026-10-12T04:26:20Z; 06:05Z'den beri Latest değil (yerini `windows-v0.1.0.4` aldı); production üzerinden gerçek oturumlar geçti |
 | Yayın | `windows-v0.1.0.2` (Actions run `38200657904`, `windows-2025`) |
 | Kaynak | `fa24b20e189d41e2713234d81e6af9ea66f51c89`, sequence `2` |
 | EXE | `184864000` bayt, SHA-256 `0ed698ecf4aa4796b51c486b0f10f0809e5bdfd01e2b6217edd720a6d30366f0`, `ProductVersion 0.1.0+fa24b20…`, `FileVersion 0.1.0.2`, `NotSigned` |
@@ -271,17 +336,28 @@ Kaynak: [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-11-pi-linuxarm64-k
 | Trivy DB `downloadedAt` | `2026-10-11T02:05:21Z` |
 | Deployment | 2026-10-12'de kapı yeniden çalıştırılıp (manifest `BFF1492E5FEF9DCA4150305012A5997D125255290273B4E591BB28471E040521`, DB `updatedAt` `2026-10-11T19:06:46Z`, `downloadedAt` `2026-10-12T00:22:02Z`, image ID'ler aynı) `security:container:deploy` ile yapıldı; ayrıntı [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-12-pi-production-deployment-kanıtı) |
 
+### Pi production (güncel, 2026-10-12)
+
+Kaynak: [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md#2026-10-12-er-t16-yeniden-deployları).
+
+| Alan | Değer |
+|---|---|
+| Kaynak | `0bdd4d23da59242f67ba31b406888736b983ce60` |
+| Manifest SHA-256 | `631431c4873dae90e118d8906a4446eb8eb8c7bb6877f6b57a49546d030af76e` (şema `3`, `linux/arm64`, 3/3 HIGH/CRITICAL `0`) |
+| Trivy DB | `updatedAt` `2026-10-12T01:14:57Z`, `downloadedAt` `2026-10-12T05:54:36Z` |
+| Application image | `sha256:9abeca940c6f92b7e3be7346774379afde12dea7c089e05e3f5506b419ce0ef2` |
+| Coturn image | `sha256:730f47e0a229abf144deb75dafb39bb6252ece95e3e43c8c5368bd757cdb0a59` (değişmedi) |
+| Geri dönüş | Önceki application image `sha256:58bd4687b3eaec1791a6fcc16b562b4b47c53cfe7fca04bbf1e7dadab139bc02` (`2ebd1ee`) host'ta tutuluyor |
+
 ## Kabul için kalan sıra
 
-1. ICE yenilemesinde lane yalıtımını (ER-T16) düzelt: web'i Pi'ye doğrulanmış
-   deploy akışıyla al, düzeltmeli Windows yayınını (sequence 3) üret ve doğrula,
-   production üzerinden relay ve kurtarma senaryolarını yeniden koş.
-2. Yayını temiz Windows 10/11 makinesinde indirip çalıştır; SmartScreen ve ilk
+1. Yayını temiz Windows 10/11 makinesinde indirip çalıştır; SmartScreen ve ilk
    oturumdaki Windows Güvenlik Duvarı izin penceresini kaydet, production v3
    sunucusu üzerinden gerçek bir oturum kur. Authenticode imzası sertifika
    geldiğinde ayrıca eklenir.
 
 (Pi arm64 kapısı, doğrulanmış production deployment'ı, dış HTTPS/WSS testi,
-gerçek oturum sonrası production log/audit örneği, audit arıza tatbikatı ve
-native çökmenin (ER-T15) düzeltmesiyle `windows-v0.1.0.2` yayını 2026-10-12'de
-tamamlandı.)
+gerçek oturum sonrası production log/audit örneği, audit arıza tatbikatı,
+native çökmenin (ER-T15) düzeltmesiyle `windows-v0.1.0.2` yayını ve ICE
+yenilemesi lane yalıtımının (ER-T16) düzeltmesiyle `windows-v0.1.0.4` yayını
+2026-10-12'de tamamlandı.)

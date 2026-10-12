@@ -304,3 +304,35 @@ aynı); image çalışma ağacından Dockerfile `runtime` hedefiyle build edildi
   süresi bir saniyelik watchdog aralığı + kapanış süresidir.
 - Bu kanıt yerel amd64 build'idir; Pi'deki production `linux/arm64` image'ı ya da
   canlı servis değildir. Canlı servisle arıza enjeksiyonu yapılmadı.
+
+## 2026-10-12 ER-T16 yeniden deploy'ları
+
+ICE yenilemesi lane yalıtımı (ER-T16) ve görüntü hattı kurtarması için web +
+signaling aynı gün üç kez, her seferinde bu belgedeki doğrulanmış akışla production'a
+alındı. Pi'deki temiz klon `git merge --ff-only` ile kaynağa getirildi; kapı
+(`linux/arm64`, düşük öncelikli) deploy'dan hemen önce yeniden çalıştırıldı ve 3/3
+hedefte HIGH/CRITICAL `0` ile `passed` verdi; ardından
+`npm run security:container:deploy` → `container_deployment:passed`.
+
+| Kaynak | Manifest SHA-256 | Application image | Not |
+|---|---|---|---|
+| `4f848f3` | `89822634efee8ffe887f4d74bd8d1802462fb0ecbf68b3c32e7d76228d535674` | `sha256:186b1a29c55785a93382d02c83b5918323990786dc54adf05726e66d69092be5` | Lane başına ICE yenilemesi |
+| `2ebd1ee` | `d92ed897898ce5479b93fd9b2da6790b5afb85fcb9affc0ad5070ff71e5c83e5` | `sha256:58bd4687b3eaec1791a6fcc16b562b4b47c53cfe7fca04bbf1e7dadab139bc02` | Görüntü hattı kurtarması; Trivy DB `downloadedAt` `2026-10-12T05:06:22Z`. Güncel geri dönüş image'ı |
+| `0bdd4d2` | `631431c4873dae90e118d8906a4446eb8eb8c7bb6877f6b57a49546d030af76e` | `sha256:9abeca940c6f92b7e3be7346774379afde12dea7c089e05e3f5506b419ce0ef2` | Geç aday toleransı; Trivy DB `updatedAt` `2026-10-12T01:14:57Z`, `downloadedAt` `2026-10-12T05:54:36Z`. **Canlı** |
+
+- Node runtime `sha256:6907ca2a26f8…` ve coturn `sha256:730f47e0a229…0a59`
+  image'ları üç deploy'da da aynı kaldı (coturn yalnız Compose tarafından yeniden
+  oluşturuldu).
+- Her deploy sonrasında iki container `healthy`, RestartCount 0, UID/GID
+  `1000:1000`, read-only rootfs, `cap_drop: ALL`, `no-new-privileges`; `/health`
+  200 ve site yeni web bundle'ını sunuyor. Bir önceki application image her
+  seferinde geri dönüş için host'ta tutuldu.
+- Gece boyunca yapılan gerçek oturumlardan sonra Pi'de salt-okunur özet: audit 278
+  kayıt (`approval_granted` 56, `control_revoked` 17, `session_ended` — `host_left`
+  146, `guest_left` 37, `reconnect_timeout` 19 —, `upgrade_rejected` 3); yalnız
+  sekiz izinli alan, `protocolVersion` 3; IP/kod/SDP/secret deseni 0; application
+  log 1 satır (`service.ready`); coturn log sürücüsü `none`; audit dosyası `0600`,
+  dizin `0700`, sahip UID 1000.
+- Oturum sonuçları [`PHASE4_ACCEPTANCE.md`](PHASE4_ACCEPTANCE.md#doğrulama-tabanı)
+  ve [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md#er-t16-düzeltmeli-koşular-2026-10-12)
+  belgelerindedir.
