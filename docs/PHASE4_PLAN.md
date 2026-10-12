@@ -190,9 +190,14 @@ Dilim 4 kararı:
   dokuz production oturumu sonrası audit 35 kayıt/application log 1 satır, hassas
   desen 0. Pi'deki arm64 production image'ıyla aynı tatbikat isteğe bağlı,
   `--image` ile.)
-- [ ] Production oturumlarında görülen native çökmeyi (ER-T15, `0xC0000005`,
+- [x] Production oturumlarında görülen native çökmeyi (ER-T15, `0xC0000005`,
   serbest bırakılmış `CRITICAL_SECTION`) kök nedeniyle düzelt; yeni yayın
-  (sequence 2) ve production oturum tekrarı.
+  (sequence 2) ve production oturum tekrarı. (2026-10-12: NVIDIA asenkron MFT
+  kapanış yarışı, `fe10421`; yerel stres 3 × 300 sn temiz; `windows-v0.1.0.2`
+  production'da 13 senaryoda çökmedi ve yayımlandı.)
+- [ ] ICE yenilemesinde lane yalıtımı (ER-T16): bir lane'in `refresh_ice`
+  isteği diğer lane'in eş bağlantısını yeniden kurmamalı; web'in Pi deploy'u,
+  yeni Windows yayını (sequence 3) ve relay/kurtarma oturum tekrarı.
 - [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
   yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
   sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
@@ -206,9 +211,10 @@ Dilim 4 kararı:
   manifesti attestation'ı, attestation'lı adayda başarılı `verify-provenance` ve
   taslak yayın (2026-10-11, run `38107001498`, `8701f78`, `windows-v0.1.0.1`;
   ayrı makinede 4/4 `gh attestation verify` ve `verify-provenance` OK).
-- [ ] Yayın adayının temiz Windows 10/11 doğrulaması ve SmartScreen davranışının
-  kaydı; taslağın yayımlanması. (2026-10-12: `windows-v0.1.0.1` paketiyle
-  production üzerinden gerçek oturumlar geliştirme makinesinde geçti.)
+- [ ] Yayının temiz Windows 10/11 doğrulaması ve SmartScreen davranışının
+  kaydı. (2026-10-12: `windows-v0.1.0.1` ve `0.1.0.2` paketleriyle production
+  üzerinden gerçek oturumlar geliştirme makinesinde geçti; `windows-v0.1.0.2`
+  yayımlandı, run `38200657904`, `fa24b20`.)
 - [ ] (Sertifika gelince) Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161
   servisiyle temiz ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz
   Windows 10/11 doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.

@@ -419,10 +419,41 @@ ayrılma; guest relay'e zorlandığında TURN relay↔relay; ICE/native lane ar�
 retry ve ani guest kaybında zarif hata/kurtarma. Oturumlardan birinde (zorlanmış
 relay, video kurulamadı, guest kapanırken) EXE `0xC0000005` ile kapandı (`ntdll`,
 serbest bırakılmış `CRITICAL_SECTION`; ER-T15). Bu nedenle `windows-v0.1.0.1`
-taslağı yayımlanmadı; düzeltmeli yeni yayın (sequence 2) bekleniyor.
+taslağı yayımlanmadı; yerini `windows-v0.1.0.2` aldı.
 
-Kalan: çökme düzeltmeli yayın, temiz Windows 10/11 makinesinde indirme +
-çalıştırma + SmartScreen davranışı kanıtı ve yayımlama. Bu alınmadan kriter
+### İkinci GitHub koşusu ve yayın (2026-10-12)
+
+Çökme düzeltmesi (`fe10421`, birleşme `fa24b20`) sonrası Actions run
+`38200657904` (`windows-2025`, sequence `2`) iki işte de başarılı oldu. CI'da
+npm 591 + 1 atlanan, native 54 + 1 atlanan, desktop 113, release 234 test ve
+`security:audit` geçti; attestation ve CI içi `verify-provenance` OK.
+
+| Dosya | Boyut | SHA-256 |
+|---|---|---|
+| `EdizRemote.exe` | `184864000` | `0ed698ecf4aa4796b51c486b0f10f0809e5bdfd01e2b6217edd720a6d30366f0` |
+| `EdizRemote.win-x64.zip` | `79939180` | `2b82d6b0b4c1c6d8406930e4f5918cfd94a82e0826c4e2067bcbeceef5141f56` |
+| `EdizRemote.win-x64.provenance.json` | `2724` | `70e6e3f7dcb0f7ff331322ebf5e9e7661b6da7b3564572aa14965be5b24237ed` |
+| `EdizRemote.win-x64.SHA256SUMS` | `1188` | `081d9a4a86cb00ec95fd26784e118887aed14c4122a1aaee617052bf5110bbe1` |
+
+EXE kimliği `ProductVersion 0.1.0+fa24b20e189d41e2713234d81e6af9ea66f51c89`,
+`FileVersion 0.1.0.2`, Authenticode `NotSigned`. Bağımsız doğrulama (geliştirme
+makinesi, taslaktan indirilen dosyalar): dört dosya için en sıkı `gh attestation
+verify` politikası başarılı, yanlış commit ile düştü; zip içindeki EXE tekil EXE
+ile aynı; zip'ten açılan ağaçta `verify-provenance` (taban 2)
+`WINDOWS_RELEASE_PROVENANCE_VERIFY_OK`.
+
+Production denemesi (geliştirme makinesi, temiz Windows değil): yayın EXE'si cdb
+bağlı ve bağlı değilken 13 senaryo — doğrudan P2P + kontrol/imleç/revoke/ayrılma,
+zorlanmış relay, relay'de görüntü kurulamadan guest kaybı (ER-T15'in asıl
+senaryosu), onaydan 1,5/2,5 sn sonra ve akış sırasında ani guest kaybı, üç tur
+"Görüntüyü yeniden dene". Çökme olayı ve dump yok. `windows-v0.1.0.2`
+2026-10-12T04:26:20Z'de yayımlandı (Latest). Sürüm notlarına iki bilinen sorun
+eklendi: relay'de ICE yenilemesinin lane yalıtımı (ER-T16) ve ilk oturumda Windows
+Güvenlik Duvarı izin penceresi (yeni EXE yolu ilk kez dinleyen soket açtığında;
+uygulama hatası değildir).
+
+Kalan: ER-T16 düzeltmeli yayın (sequence 3), temiz Windows 10/11 makinesinde
+indirme + çalıştırma + SmartScreen davranışı kanıtı. Bu alınmadan kriter
 karşılanmış sayılmaz.
 
 ## Dağıtım ve kalan production engeli
