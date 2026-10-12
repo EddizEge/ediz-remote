@@ -76,6 +76,7 @@ export type DesktopErrorCode =
   | 'display_switch_failed'
   | 'quality_switch_failed'
   | 'native_video_failed'
+  | 'native_transport_failed'
 
 export interface DesktopDisplay {
   id: string
@@ -691,6 +692,7 @@ function isDesktopErrorCode(value: unknown): value is DesktopErrorCode {
     value === 'control_input_failed' ||
     value === 'display_switch_failed' ||
     value === 'quality_switch_failed' ||
-    value === 'native_video_failed'
+    value === 'native_video_failed' ||
+    value === 'native_transport_failed'
   )
 }

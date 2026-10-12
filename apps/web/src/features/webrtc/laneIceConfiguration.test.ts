@@ -502,6 +502,52 @@ describe('independent ICE refresh per negotiation lane', () => {
   })
 })
 
+describe('guest native receiver revival', () => {
+  function startGuest() {
+    const props: SignalingProps = {
+      role: 'guest',
+      sessionState: 'active',
+      iceConfiguration: iceConfigurationFor('approved'),
+      iceResetVersion: 1,
+    }
+    renderLanes(props)
+    return { props, nativePeer: peers('native-video')[0] }
+  }
+
+  it('keeps a failed receiver that a late remote candidate revives', async () => {
+    let { props, nativePeer } = startGuest()
+
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(500)
+    nativePeer.emitConnectionState('connecting')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativePeer.closed).toBe(false)
+
+    // The revived attempt fails again: recovery is scheduled anew with the
+    // unchanged first backoff, then rebuilds only the native receiver.
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(999)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+    props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
+    renderLanes(props)
+    expect(nativePeer.closed).toBe(true)
+    expect(openPeers('native-video')).toHaveLength(1)
+  })
+
+  it('cancels pending recovery when the receiver reconnects', async () => {
+    const { nativePeer } = startGuest()
+
+    nativePeer.emitConnectionState('disconnected')
+    nativePeer.emitConnectionState('connected')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativePeer.closed).toBe(false)
+  })
+})
+
 describe('host retry and native re-offer', () => {
   function startHost() {
     desktopBridge.desktop = true
@@ -531,6 +577,7 @@ describe('host retry and native re-offer', () => {
   function postNativeState(
     negotiationId: string,
     state: 'connected' | 'closed' | 'disconnected' | 'failed',
+    errorCode: string | null = state === 'failed' ? 'native_video_failed' : null,
   ) {
     postFromDesktop({
       type: 'desktop.native-video.state',
@@ -540,7 +587,7 @@ describe('host retry and native re-offer', () => {
       negotiationId,
       payload: {
         state,
-        errorCode: state === 'failed' ? 'native_video_failed' : null,
+        errorCode,
         recoveryAttempt: null,
         recoveryMaximumAttempts: null,
       },
@@ -614,5 +661,98 @@ describe('host retry and native re-offer', () => {
     await vi.advanceTimersByTimeAsync(10_000)
     expect(requestIceRefresh).not.toHaveBeenCalled()
     expect(nativeStarts()).toHaveLength(1)
+  })
+
+  it('treats an unknown native failure code as a terminal fault', async () => {
+    startHost()
+    postNativeState(openNativeNegotiation(), 'failed', 'peer_gone')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativeStarts()).toHaveLength(1)
+  })
+
+  it('re-offers native video after a native transport failure', async () => {
+    let { props, lanes } = startHost()
+    const [generalPeer] = peers('peer')
+    const firstEpoch = nativeStarts()[0].sessionEpoch
+
+    postNativeState(openNativeNegotiation(), 'failed', 'native_transport_failed')
+    lanes = renderLanes(props)
+    expect(lanes.native.status).toBe('disconnected')
+    expect(lanes.native.error)
+      .toBe('Ekran görüntüsü bağlantısı kesildi; yeniden bağlanılıyor.')
+
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+    props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
+    lanes = renderLanes(props)
+
+    expect(desktopBridge.posted).toContainEqual({
+      type: 'desktop.native-video.stop',
+      channel: 'native-video',
+      version: 2,
+      sessionEpoch: firstEpoch,
+    })
+    expect(nativeStarts()).toHaveLength(2)
+    expect(nativeStarts()[1].iceServers)
+      .toEqual([{ urls: ['stun:native-refresh.example.test:3478'] }])
+    expect(lanes.native.status).toBe('connecting')
+    expect(peers('peer')).toEqual([generalPeer])
+    expect(generalPeer.closed).toBe(false)
+  })
+
+  it('stops for the user retry after three native transport recoveries', async () => {
+    let { props, lanes } = startHost()
+
+    for (const [attempt, delay] of [[1, 1_000], [2, 2_000], [3, 4_000]]) {
+      postNativeState(openNativeNegotiation(), 'failed', 'native_transport_failed')
+      await vi.advanceTimersByTimeAsync(delay - 1)
+      expect(requestIceRefresh).toHaveBeenCalledTimes(attempt - 1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(requestIceRefresh).toHaveBeenCalledTimes(attempt)
+      props = {
+        ...props,
+        iceConfiguration: iceConfigurationFor('native-refresh-' + attempt),
+      }
+      renderLanes(props)
+      expect(nativeStarts()).toHaveLength(attempt + 1)
+    }
+
+    const lastEpoch = nativeStarts().at(-1)!.sessionEpoch
+    postNativeState(openNativeNegotiation(), 'failed', 'native_transport_failed')
+    lanes = renderLanes(props)
+    expect(lanes.native.status).toBe('failed')
+    expect(lanes.native.error).toBe('Güvenli ekran görüntüsü bağlantısı kurulamadı.')
+    expect(desktopBridge.posted).toContainEqual({
+      type: 'desktop.native-video.stop',
+      channel: 'native-video',
+      version: 2,
+      sessionEpoch: lastEpoch,
+    })
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(3)
+    expect(nativeStarts()).toHaveLength(4)
+
+    // Only the user's retry clears the latch and starts a new attempt budget.
+    lanes.native.retry()
+    lanes = renderLanes(props)
+    expect(nativeStarts()).toHaveLength(5)
+    expect(lanes.native.status).toBe('connecting')
+  })
+
+  it('keeps a healthy native stream after a transient disconnect', async () => {
+    startHost()
+    const negotiationId = openNativeNegotiation()
+    postNativeState(negotiationId, 'connected')
+
+    postNativeState(negotiationId, 'disconnected')
+    await vi.advanceTimersByTimeAsync(500)
+    postNativeState(negotiationId, 'connected')
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativeStarts()).toHaveLength(1)
+    expect(desktopBridge.posted.some(
+      (message) => message.type === 'desktop.native-video.stop',
+    )).toBe(false)
   })
 })

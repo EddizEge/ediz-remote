@@ -20,6 +20,7 @@ public sealed class DesktopErrorCodeTests
     [InlineData(DesktopErrorCodes.DisplaySwitchFailed)]
     [InlineData(DesktopErrorCodes.QualitySwitchFailed)]
     [InlineData(DesktopErrorCodes.NativeVideoFailed)]
+    [InlineData(DesktopErrorCodes.NativeTransportFailed)]
     public void AllowsOnlyStableBridgeErrorCodes(string errorCode)
     {
         Assert.True(DesktopErrorCodes.IsAllowed(errorCode));
