@@ -229,3 +229,34 @@ doğrulanmış akışa geçirildi. Kaynak `abcaab9`. Kapı deploy'dan hemen önc
 - Kalan: gerçek oturum trafiği sonrası production log/audit örneği ve audit
   arızasında 503/restart davranışının izole ortamda doğrulanması (canlı
   servisle arıza enjeksiyonu yapılmaz).
+
+## 2026-10-12 audit arıza tatbikatı kanıtı
+
+`npm run security:audit-drill` (`scripts/audit-failure-drill.mjs`) bu PC'deki
+Docker Desktop `linux/amd64` engine'inde, production'dan ve diğer Docker
+kaynaklarından ayrı, yalnız `ediz-remote-audit-drill-<rastgele>-…` önekli
+kaynaklarla çalıştırıldı. Kaynak `lane/audit-tatbikat` dalındaki tatbikat
+commit'i (temel `694ded9`); image çalışma ağacından Dockerfile `runtime`
+hedefiyle build edildi:
+`sha256:222c33f3aeafcc45506a98b73f9ac8f1a3a547dc22e151199b82c2b273ed1f64`
+(`ediz-remote/audit-drill:local`, build 69 sn). Akış ve yöntem
+[audit belgesinde](SECURITY_AUDIT.md#audit-arıza-tatbikatı).
+
+| Aşama | Taze build koşusu | `--image` koşusu (aynı image ID) |
+|---|---|---|
+| Sertleştirme (`inspect`) | read-only, `cap-drop ALL`, ek cap yok, `no-new-privileges`, PID 256, UID 1000, `unless-stopped`, yalnız loopback | aynı |
+| Başlangıç | `healthy` (10,2 sn), `/health` 200, v3 upgrade 101 + `ready`, yabancı Origin 403, audit dosyası 1, RestartCount 0, log yalnız `service.ready` | aynı (`healthy` 12,4 sn) |
+| Enjeksiyon | audit dizini `0:0 0700`; tetik öncesi `/health` 200 | aynı |
+| Tetik ve gözlem | tetik 403; `/health` `503 {"status":"unavailable"}` ve yeni upgrade 503 tetikten 46 ms sonra; çıkış kodu 1, tetikten 711 ms sonra | 503'ler 45 ms; çıkış kodu 1, 1198 ms |
+| Log (sabit kodlar) | `ready, audit_unavailable, shutdown_failed, startup_failed×5`; beklenmeyen satır 0 | `… startup_failed×4`; beklenmeyen 0 |
+| Arıza sürerken | her restart `startup_failed`, RestartCount 5'e çıktı | 5 |
+| Geri alma | `1000:1000 0700` sonrası 7,0 sn'de `healthy`, `/health` 200, v3 101, yeni audit yazımı yeniden başlatmasız | 7,8 sn; aynı |
+| Temizlik | önekli container/ağ/volume kalmadı; image bırakıldı | aynı |
+| Sonuç | `audit_drill:passed` | `audit_drill:passed` |
+
+- Aynı image ile bir koşu daha (`--image ediz-remote/audit-drill:local`) aynı
+  sonuçla geçti (503'ler 13 ms, çıkış 1773 ms).
+- Restart zamanlaması Docker'ın geri çekilen restart gecikmesine bağlıdır; çıkış
+  süresi bir saniyelik watchdog aralığı + kapanış süresidir.
+- Bu kanıt yerel amd64 build'idir; Pi'deki production `linux/arm64` image'ı ya da
+  canlı servis değildir. Canlı servisle arıza enjeksiyonu yapılmadı.

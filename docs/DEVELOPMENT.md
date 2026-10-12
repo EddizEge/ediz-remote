@@ -185,6 +185,15 @@ npm run security:audit
 Container release kapısı ayrı `npm run security:containers` komutudur; çalışma
 biçimi ve kanıt dosyaları `docs/CONTAINER_RELEASE.md` altında açıklanır.
 
+```powershell
+npm run security:audit-drill
+npm run security:audit-drill -- --image <image>
+```
+
+Audit arıza tatbikatı (503 → `audit_unavailable` çıkışı → restart → geri dönüş)
+yerel Docker'da yalnız kendi önekli kaynaklarıyla çalışır; `npm test`'e girmez.
+Ayrıntı `docs/SECURITY_AUDIT.md` "Audit arıza tatbikatı" bölümündedir.
+
 ## Windows native host
 
 Native host için sistem geneline SDK kurmak gerekmez; yardımcı betik gerekirse

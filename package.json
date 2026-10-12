@@ -12,7 +12,7 @@
     "dev": "concurrently -n signaling,web -c blue,green \"npm run dev --workspace @ediz-remote/signaling\" \"npm run dev --workspace @ediz-remote/web\"",
     "predev": "npm run build --workspace @ediz-remote/protocol",
     "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run turn:public-preflight:test && npm run security-output:test && npm run security:container:test && npm run test --workspaces --if-present",
+    "test": "npm run turn:public-preflight:test && npm run security-output:test && npm run security:container:test && npm run security:audit-drill:test && npm run test --workspaces --if-present",
     "start": "npm run start --workspace @ediz-remote/signaling",
     "native:build": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 build",
     "native:test": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-host.ps1 test",
@@ -37,6 +37,8 @@
     "security-output:test": "node --test scripts/safe-output.test.mjs scripts/browser-turn-simulation-redaction.test.mjs",
     "security:container:test": "node --test scripts/container-security-audit.test.mjs",
     "security:container:deploy": "node scripts/container-deploy.mjs",
+    "security:audit-drill": "node scripts/audit-failure-drill.mjs",
+    "security:audit-drill:test": "node --test scripts/audit-failure-drill.test.mjs",
     "security:containers": "node scripts/container-security-audit.mjs",
     "test:ws-proxy": "node scripts/websocket-interruption-proxy.mjs",
     "security:audit": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/security-audit.ps1"
