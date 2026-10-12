@@ -755,9 +755,12 @@ kaydı `docs/THREAT_MODEL.md`, kriter bazında kabul kanıtı
 
 Kalan yapılacaklar:
 
-- Audit arızasında runtime 503/restart davranışını aynı image ile izole Docker
-  ortamında doğrula (canlı servise arıza enjekte etme); gerçek oturum sonrası
-  production log/audit örneğini kaydet.
+- 2026-10-12'de production üzerinden `windows-v0.1.0.1` paketiyle gerçek oturumlar
+  (doğrudan P2P, TURN relay, kontrol/revoke) geçti; birinde yayın EXE'si native
+  erişim ihlaliyle kapandı (ER-T15). Kök nedeni düzelt, yeni yayın (sequence 2)
+  üret ve oturum senaryolarını tekrar koş.
+- Audit arıza tatbikatı (`npm run security:audit-drill`, izole Docker) ve gerçek
+  oturum sonrası production log/audit örneği 2026-10-12'de tamamlandı.
 - Pi `linux/arm64` kapısı ve doğrulanmış production deployment'ı 2026-10-12'de
   tamamlandı: deploy öncesi 3/3 sıfır bulgu, `security:container:deploy`, iki
   `healthy`, UID 1000 secret/audit volume, coturn log sürücüsü `none`, dış
@@ -980,9 +983,10 @@ provenance kapıları da kod ve politika olarak tamamlandı; yerel `linux/amd64`
 kapısı 2026-10-09'da, Pi `linux/arm64` kapısı 2026-10-11'de üç hedefte gerçek 0
 bulguyla geçti. GitHub'da derlenip attest edilen ilk Windows yayını
 (`windows-v0.1.0.1` taslağı) 2026-10-11'de bağımsız doğrulandı; Pi production
-2026-10-12'de doğrulanmış Faz 4 container'larıyla v3'e geçti. Sıradaki iş bu
-taslağın temiz Windows 10/11 doğrulaması, gerçek oturum sonrası log/audit örneği
-ve audit 503/restart davranışının izole doğrulamasıdır
+2026-10-12'de doğrulanmış Faz 4 container'larıyla v3'e geçti; aynı gün gerçek
+oturum sonrası log/audit örneği ve audit arıza tatbikatı tamamlandı. Sıradaki iş
+production oturumunda görülen native çökmenin (ER-T15) düzeltilmesi ve yeni
+yayının temiz Windows 10/11 doğrulamasıdır
 (sertifika gelene kadar imzasız provenance yolu, depo sahibi kararı 2026-10-11). Başlamadan
 `docs/THREAT_MODEL.md` ve `docs/PHASE4_PLAN.md` dosyalarını oku. Wire v1/v2
 adayları ile alt protokol teklif etmeyen eski EXE'ler v3 sunucuya bağlanamaz;

@@ -352,8 +352,12 @@ gevşetilmez.
    SHA256SUMS ve zip `actions/attest-build-provenance` ile attest edilir; ardından
    depo betiği `powershell -File scripts/windows-release.ps1 verify-provenance`
    (`GH_TOKEN` ile) çalışır ve `gh release create --draft` ile
-   `windows-v<sürüm>.<sequence>` taslak yayını dört dosyayla açılır. Yayını depo
-   sahibi elle yayımlar.
+   `windows-v<sürüm>.<sequence>` taslak yayını dört dosyayla açılır. Yayın
+   notları önce destek alan/veren için Türkçe kullanım adımlarını (zip'i açma,
+   SmartScreen "Ek bilgi → Yine de çalıştır", kod, onay seçenekleri,
+   revoke/bitir/acil durdurma, WebView2 gereksinimi), sonra commit/sequence/build
+   kimliğini, dört dosyanın SHA-256 değerlerini ve `gh attestation verify`
+   komutunu içerir. Yayını depo sahibi (ya da onun izniyle yönetici) elle yayımlar.
 
 EXE tek başına çalışmaz (yanında `Web/` ve `ediz-remote.settings.json` gerekir);
 dağıtım birimi zip'tir. Zip açıldığında `win-x64/` ağacı SHA256SUMS ile birebir
@@ -406,8 +410,19 @@ tekil EXE ile aynı; zip'ten açılan ağaçta `verify-provenance` (taban 1)
 `WINDOWS_RELEASE_PROVENANCE_VERIFY_OK`, bir dosya değiştirilince
 `provenance_tree_mismatch`, taban 2 ile `release_rollback_rejected`.
 
-Kalan: temiz Windows 10/11 makinesinde indirme + çalıştırma + SmartScreen
-davranışı kanıtı ve taslağın depo sahibince yayımlanması. Bu alınmadan kriter
+2026-10-12 production denemesi (geliştirme makinesi, temiz Windows değil): zip
+SHA-256 yeniden doğrulanıp açıldı, ağaç SHA256SUMS ile 12/12 eşleşti. EXE
+varsayılan ayarla `wss://remote.edizegemercan.com.tr/ws`'ye bağlandı; production
+v3 üzerinden headless Edge guest ile dokuz gerçek oturum kuruldu: doğrudan P2P
+2560×1440 GPU H.264, view+control (`pointer.move` ile gerçek imleç), revoke,
+ayrılma; guest relay'e zorlandığında TURN relay↔relay; ICE/native lane arızası,
+retry ve ani guest kaybında zarif hata/kurtarma. Oturumlardan birinde (zorlanmış
+relay, video kurulamadı, guest kapanırken) EXE `0xC0000005` ile kapandı (`ntdll`,
+serbest bırakılmış `CRITICAL_SECTION`; ER-T15). Bu nedenle `windows-v0.1.0.1`
+taslağı yayımlanmadı; düzeltmeli yeni yayın (sequence 2) bekleniyor.
+
+Kalan: çökme düzeltmeli yayın, temiz Windows 10/11 makinesinde indirme +
+çalıştırma + SmartScreen davranışı kanıtı ve yayımlama. Bu alınmadan kriter
 karşılanmış sayılmaz.
 
 ## Dağıtım ve kalan production engeli

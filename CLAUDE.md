@@ -15,8 +15,10 @@ belgelerin yerine geçmez.
   Lisanslama/abonelik veya geniş yönetim paneli şu an öncelik değildir.
 - Faz 1, 2 ve 3 kabulü tamamlandı. **Faz 4 güvenlik sertleştirmesi devam ediyor.**
 - Faz 4'ün önemli kod ve politika işleri hazır. Pi production 2026-10-12'de
-  doğrulanmış Faz 4 container'larıyla wire v3'e geçti; Windows release kabulü
-  (temiz Windows 10/11) ve birkaç production kanıtı henüz tamamlanmadı. Windows
+  doğrulanmış Faz 4 container'larıyla wire v3'e geçti; aynı gün production log/
+  audit örneği ve audit arıza tatbikatı tamamlandı. Açık kalanlar: production
+  oturumunda görülen masaüstü native çökmesi (ER-T15) ve Windows release kabulü
+  (temiz Windows 10/11). Windows
   için depo sahibinin 2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub
   attestation ile doğrulanan provenance yolu (bölüm 6B).
 - Installer ve otomatik güncelleme Faz 5; soak ve GPU/ağ matrisi Faz 6 kapsamındadır.
@@ -122,6 +124,15 @@ Teslim anındaki önceki aday (artık yerinde değil):
 - Dış test: `/health` 200, v3 kabul, v2/alt protokolsüz `426`, yabancı origin `403`.
   Eski (v3 öncesi) image geri dönüş için host'ta tutuluyor. Ayrıntı
   `docs/CONTAINER_RELEASE.md`.
+- Gerçek oturum (2026-10-12): `windows-v0.1.0.1` zip'iyle geliştirme makinesinde
+  production üzerinden dokuz oturum (doğrudan P2P ve TURN relay, view+control,
+  revoke, arıza yolları). Sonra Pi'de salt-okunur sayım: audit 35 kayıt, yalnız
+  sekiz alan, IP/kod/SDP/secret deseni 0; application log tek `service.ready`.
+  Bir oturumda yayın EXE'si `0xC0000005` (ntdll, serbest bırakılmış
+  `CRITICAL_SECTION`) ile kapandı → ER-T15, düzeltme sürüyor.
+- Audit arıza tatbikatı: `npm run security:audit-drill` (yerel Docker, yalnız
+  önekli kaynaklar) 503 → `audit_unavailable` çıkışı → restart → geri dönüş;
+  2026-10-12'de dört kez `passed`.
 
 `artifacts/`, `.tools/`, secret dosyaları, bağımlılıklar ve build çıktıları
 GitHub'a dahil değildir. Temiz klonda bunların bulunmaması beklenir.
@@ -226,15 +237,18 @@ sırayla, erişim ve gerçek kanıt bulunduğunda tamamla. Fuzz katmanı, 326 te
 durum makinesi matrisi ve `docs/PHASE4_ACCEPTANCE.md` 2026-10-09'da tamamlandı
 (toplu `npm test` 576 + 1 atlanan). 2026-10-11'de Pi arm64 kapısı geçti ve ilk
 attest edilmiş GitHub Windows yayını (`windows-v0.1.0.1` taslağı) bağımsız
-doğrulandı; 2026-10-12'de Pi production'a doğrulanmış deploy yapıldı. Kalan Faz 4
-kabulü: temiz Windows 10/11 denemesi (gerçek oturum dahil), gerçek oturum sonrası
-production log/audit örneği ve audit 503/restart davranışının izole doğrulaması.
+doğrulandı; 2026-10-12'de Pi production'a doğrulanmış deploy yapıldı, gerçek
+oturum sonrası production log/audit örneği alındı ve audit arıza tatbikatı geçti
+(toplu `npm test` 591 + 1 atlanan). Kalan Faz 4 kabulü: production oturumunda
+görülen masaüstü native çökmesinin (ER-T15) düzeltilip yeni yayınla (sequence 2)
+doğrulanması ve temiz Windows 10/11 denemesi (gerçek oturum dahil).
 
 ### A. Pi arm64 container kabulü
 
-Durum (2026-10-12): 1–4 tamamlandı (yukarıdaki deployment kaydı). Kalan 5: audit
-arızasında 503/restart izole ortamda; coturn stdout suppression ve dış HTTPS/WSS
-doğrulandı. Yeniden deploy'da aynı akış: kapı tazelenir, `security:container:deploy`.
+Durum (2026-10-12): 1–5 tamamlandı (yukarıdaki deployment kaydı; 503/restart
+yerel izole Docker tatbikatıyla, `npm run security:audit-drill`). Pi'deki arm64
+production image'ıyla aynı tatbikat isteğe bağlı (`--image`, ayrı onaylı ortam).
+Yeniden deploy'da aynı akış: kapı tazelenir, `security:container:deploy`.
 
 1. Mevcut production sürümü, Compose proje adları, health, secret sahiplik/izinleri
    ve audit volume durumunu salt-okunur doğrula. Pi erişimi bu dosyada yoktur;
@@ -270,7 +284,10 @@ SmartScreen uyarısı kalır (ER-T13 artık riski kabul edildi).
    GitHub-hosted runner) ile fail-closed doğrular. Kod ve 234 politika testi hazır.
 3. İlk GitHub koşusu (2026-10-11) `windows-v0.1.0.1` taslağını attest etti;
    CI içi ve ayrı makinedeki `verify-provenance` ile 4/4 `gh attestation verify`
-   geçti. Kalan: temiz Windows 10/11 kanıtı ve taslağın yayımlanması. Bu olmadan
+   geçti. 2026-10-12'de aynı paketle production üzerinden gerçek oturumlar
+   geliştirme makinesinde geçti; bir arıza senaryosunda native çökme görüldü
+   (ER-T15). Kalan: çökme düzeltmesiyle yeni yayın, temiz Windows 10/11 kanıtı ve
+   yayımlama. Bu olmadan
    kriteri karşılanmış sayma; Authenticode doğrulamasını provenance manifestiyle
    gevşetme. Yeni yayın: Actions → `windows-release` → `sequence` = önceki + 1.
 

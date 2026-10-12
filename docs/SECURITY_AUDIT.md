@@ -84,7 +84,11 @@ saatlik ve yeni kayıt gününde uygulanır.
   `503 {"status":"unavailable"}` döndürür; yeni WebSocket upgrade'ları reddedilir
   ve mevcut soketin sonraki mesajı kapatılır. En geç bir saniyelik watchdog
   kontrolünde servis sabit `audit_unavailable` kodu ve sıfır olmayan çıkışla
-  kapanır; Compose restart politikası servisi yeniden başlatır.
+  kapanır; Compose restart politikası servisi yeniden başlatır. Bozuk audit
+  kuyruğu kapanışta temiz boşaltılamadığından ardından sabit `shutdown_failed`
+  de yazılır (çıkış kodu yine 1). Arıza sürdükçe her yeniden başlatma
+  `startup_failed` ile port açmadan kapanır; audit dizini düzeltilince servis
+  kendiliğinden `healthy` olur (2026-10-12 tatbikatı, aşağıda).
 - Dışarıdan üretilebilen upgrade/join gürültüsü kritik onay, başarılı resume,
   control revoke ve session-end kayıtlarının rezervini tüketemez.
 - Shutdown, kuyruk drain'i ve dosya descriptor `sync()` işlemi tamamlanmadan
@@ -150,7 +154,7 @@ Aşamalar:
    tek başına sağlığı bozmaz; arıza bir sonraki audit yazımında görülür.
 3. **Tetikleme ve gözlem:** yabancı Origin'li v3 upgrade (403) bir
    `upgrade_rejected` kaydı kuyruğa alır (başarılı upgrade audit kaydı üretmez,
-bu yüzden tetik reddedilen bir upgrade'dir). Ardından ≈50 ms aralıkla `/health` ve
+   bu yüzden tetik reddedilen bir upgrade'dir). Ardından ≈50 ms aralıkla `/health` ve
    izinli Origin'li yeni upgrade denenir: `503 {"status":"unavailable"}` ve
    upgrade 503 görülmelidir. `docker events` ile sıfır olmayan çıkış kodu,
    `inspect` ile RestartCount artışı kaydedilir. Arıza sürerken yeniden başlayan

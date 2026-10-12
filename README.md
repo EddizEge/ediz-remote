@@ -152,12 +152,13 @@ npm run security:audit
 ```
 
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
-ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-09 yerel tabanında
-seed'li fuzz ve signaling durum makinesi matrisleri dahil 576 npm testi, 42 native
-testi, 113 desktop testi ve 111 Windows release testi başarılıdır; npm/native
-paketlerinde birer ortam testi atlanmıştır. 2026-10-11'de provenance yolu
-eklendikten sonra Windows release testleri 234'tür.
-Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOPMENT.md).
+ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-12 tabanında seed'li fuzz,
+signaling durum makinesi matrisi ve audit tatbikatı birim testleri dahil 591 npm
+testi başarılıdır (1 ortam testi atlanır); 2026-10-11 GitHub derlemesinde 42 native
+(+1 atlanan), 113 desktop ve 234 Windows release testi geçmiştir. Audit yazım
+arızasının fail-closed davranışı `npm run security:audit-drill` ile yerel Docker'da
+tatbik edilir. Bu sayılar tarihsel doğrulamadır; ayrıntılar
+[teknik rehberde](docs/DEVELOPMENT.md).
 
 ## Yol haritası
 
@@ -171,10 +172,13 @@ Bu sayılar tarihsel doğrulamadır; ayrıntılar [teknik rehberde](docs/DEVELOP
 | 6 | Soak testleri ve GPU/ağ matrisi | ⏳ Sırada |
 
 Production Pi 2026-10-12'de doğrulanmış Faz 4 container'larıyla (arm64 tarama
-sıfır bulgu, read-only, UID 1000) wire v3'e geçti. Faz 4'te kalan başlıca kabul
-işleri: GitHub'da derlenip attest edilen ilk Windows yayınının
-(`windows-v0.1.0.1`, taslak) temiz Windows 10/11 doğrulaması, gerçek oturum
-sonrası log/audit örneği ve audit arıza davranışının izole doğrulaması.
+sıfır bulgu, read-only, UID 1000) wire v3'e geçti. Aynı gün GitHub'da derlenip
+attest edilen ilk Windows paketiyle production üzerinden gerçek oturumlar
+(doğrudan P2P ve TURN relay, kontrol/revoke) kuruldu; sonrasında production
+log/audit dosyalarında hassas veri bulunmadı ve audit arıza davranışı izole
+Docker tatbikatıyla doğrulandı. Faz 4'te kalan başlıca işler: bir arıza
+senaryosunda görülen masaüstü çökmesinin düzeltilmesi ve Windows yayınının temiz
+Windows 10/11 doğrulaması.
 Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
 bütünlük ve kaynak GitHub artifact attestation + SHA-256 ile doğrulanır
 (`npm run release:windows:verify-provenance`), SmartScreen ilk çalıştırmada uyarı

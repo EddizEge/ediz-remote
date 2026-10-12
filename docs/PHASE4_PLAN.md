@@ -23,6 +23,8 @@ Başlangıç: 2026-08-23
 - [x] Uygulanabilir SIPSorcery HIGH açıklarını 10.0.16 yükseltmesiyle kapat.
 - [x] Yeni web bundle'ı içeren self-contained Windows EXE adayını publish et.
 - [ ] Yeni web, signaling ve Windows paketini production'a birlikte al.
+  (2026-10-12: web + signaling v3 production'da; Windows paketi yayımlanınca
+  tamamlanır.)
 
 Rollout kararı: Güncel sunucu yalnız `ediz-remote.v3` kabul eder ve `ready`
 current/minimum sürümünü 3/3 bildirir. Faz 4 wire v1/v2 adayları ile alt protokol
@@ -182,8 +184,15 @@ Dilim 4 kararı:
   kanıtını kaydet. (2026-10-11 ilk arm64 kapısı; 2026-10-12 deploy öncesi yeniden
   3/3 `0`, manifest `BFF1492E…0521`, `security:container:deploy` ile production,
   iki `healthy`, UID 1000/read-only/capsiz; dış HTTPS/WSS politika testi 5/5.)
-- [ ] Audit arızasında 503/restart davranışını aynı image ile izole Docker
-  ortamında doğrula; gerçek oturum sonrası production log/audit örneğini kaydet.
+- [x] Audit arızasında 503/restart davranışını izole Docker ortamında doğrula;
+  gerçek oturum sonrası production log/audit örneğini kaydet. (2026-10-12:
+  `npm run security:audit-drill` Docker Desktop amd64'te dört kez `passed`;
+  dokuz production oturumu sonrası audit 35 kayıt/application log 1 satır, hassas
+  desen 0. Pi'deki arm64 production image'ıyla aynı tatbikat isteğe bağlı,
+  `--image` ile.)
+- [ ] Production oturumlarında görülen native çökmeyi (ER-T15, `0xC0000005`,
+  serbest bırakılmış `CRITICAL_SECTION`) kök nedeniyle düzelt; yeni yayın
+  (sequence 2) ve production oturum tekrarı.
 - [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
   yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
   sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
@@ -197,8 +206,9 @@ Dilim 4 kararı:
   manifesti attestation'ı, attestation'lı adayda başarılı `verify-provenance` ve
   taslak yayın (2026-10-11, run `38107001498`, `8701f78`, `windows-v0.1.0.1`;
   ayrı makinede 4/4 `gh attestation verify` ve `verify-provenance` OK).
-- [ ] `windows-v0.1.0.1` adayının temiz Windows 10/11 doğrulaması ve SmartScreen
-  davranışının kaydı; taslağın yayımlanması.
+- [ ] Yayın adayının temiz Windows 10/11 doğrulaması ve SmartScreen davranışının
+  kaydı; taslağın yayımlanması. (2026-10-12: `windows-v0.1.0.1` paketiyle
+  production üzerinden gerçek oturumlar geliştirme makinesinde geçti.)
 - [ ] (Sertifika gelince) Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161
   servisiyle temiz ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz
   Windows 10/11 doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.

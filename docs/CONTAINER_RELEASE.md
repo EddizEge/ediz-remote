@@ -226,18 +226,57 @@ doğrulanmış akışa geçirildi. Kaynak `abcaab9`. Kapı deploy'dan hemen önc
   protokolsüz istek `426`, yabancı origin `403`; CSP, `nosniff`,
   `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, Permissions-Policy,
   COOP/CORP mevcut. HSTS başlığı uygulamada yoktur (gerekirse Cloudflare'de).
-- Kalan: gerçek oturum trafiği sonrası production log/audit örneği ve audit
-  arızasında 503/restart davranışının izole ortamda doğrulanması (canlı
-  servisle arıza enjeksiyonu yapılmaz).
+- Gerçek oturum sonrası production log/audit örneği ve audit arıza tatbikatı
+  aşağıdaki iki bölümdedir (canlı servisle arıza enjeksiyonu yapılmadı).
+
+## 2026-10-12 production gerçek oturum ve log/audit kanıtı
+
+Production v3 sunucusu üzerinden, `windows-v0.1.0.1` taslağının zip'iyle (SHA-256
+`3e995246…783b`, açılan ağaç SHA256SUMS ile 12/12) geliştirme makinesinde dokuz
+gerçek oturum kuruldu. Host paketli masaüstü uygulaması (varsayılan
+`wss://remote.edizegemercan.com.tr/ws`), guest production sitesindeki headless
+Edge'dir. Bu makine temiz Windows değildir; temiz Windows 10/11 kanıtı ayrıca
+gerekir ([`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md)).
+
+- Doğrudan P2P: kod → bağlan → host "Görüntüle + kontrol et" onayı → native GPU
+  H.264 2560×1440 (host↔host UDP); kontrol izni, yalnız `pointer.move` ile gerçek
+  imleç hareketi, host revoke (guest "Yalnızca görüntüleme"e döndü, görüntü
+  sürdü), guest ayrıldı, host yeni koda döndü.
+- Guest `iceTransportPolicy: relay`'e zorlandığında relay↔relay UDP üzerinden
+  görüntü geldi; ICE yapılandırmasında STUN + TURN (UDP/TCP) ve kısa ömürlü
+  kimlik bilgisi vardı.
+- Arıza yolları: guest'te hiç aday olmadığında, yalnız native-video lane'i
+  başarısız olduğunda (üç "Görüntüyü yeniden dene" döngüsü dahil) ve relay akışı
+  sırasında guest aniden kapandığında host zarif hata/kurtarma gösterdi; recovery
+  süresi dolunca oturum kapandı.
+- **Bulgu:** dokuz oturumun birinde (zorlanmış relay, 45 sn video gelmedi, guest
+  kapatılırken) yayın EXE'si native erişim ihlaliyle kapandı (`0xC0000005`,
+  `ntdll`). Ayrıntı ve düzeltme durumu
+  [`PHASE4_ACCEPTANCE.md`](PHASE4_ACCEPTANCE.md#bloklayıcılar).
+
+Oturumlardan sonra Pi'de salt-okunur özet (ham satır yazdırılmadan, yalnız sayım):
+
+| Kaynak | Sonuç |
+|---|---|
+| Audit dosyası | `audit-2026-10-12.jsonl`, 35 kayıt, UID 1000 `0600`, dizin `0700` |
+| Audit alanları | Yalnız sekiz izinli alan; `protocolVersion` 3; ek alan 0 |
+| Audit olayları | `approval_granted` 9, `control_revoked` 1, `session_ended` (`host_left` 13, `guest_left` 4, `reconnect_timeout` 5), `upgrade_rejected` (`unsupported_protocol` 2, `invalid_origin` 1) |
+| Hassas desen taraması (audit + application log) | IPv4 0, IPv6 0, 6 haneli sayı 0, SDP/candidate 0, secret/token/credential/username sözcüğü 0, dosya yolu 0 |
+| Application log | 1 satır (`service.ready`) |
+| coturn | Docker log sürücüsü `none` |
+| Container durumu | İkisi `healthy`, RestartCount 0 |
+
+`EDIZ_REMOTE_BUILD_ID` hâlâ varsayılan `ediz-remote@0.1.0`'dır; sonraki deploy'da
+commit'li bir etiketle değiştirilebilir.
 
 ## 2026-10-12 audit arıza tatbikatı kanıtı
 
 `npm run security:audit-drill` (`scripts/audit-failure-drill.mjs`) bu PC'deki
 Docker Desktop `linux/amd64` engine'inde, production'dan ve diğer Docker
 kaynaklarından ayrı, yalnız `ediz-remote-audit-drill-<rastgele>-…` önekli
-kaynaklarla çalıştırıldı. Kaynak `lane/audit-tatbikat` dalındaki tatbikat
-commit'i (temel `694ded9`); image çalışma ağacından Dockerfile `runtime`
-hedefiyle build edildi:
+kaynaklarla çalıştırıldı. Kaynak tatbikat commit'i `90241f2` (temel `694ded9`,
+`main`'e `b9883ac` ile birleşti; signaling kodu production'daki `abcaab9` ile
+aynı); image çalışma ağacından Dockerfile `runtime` hedefiyle build edildi:
 `sha256:222c33f3aeafcc45506a98b73f9ac8f1a3a547dc22e151199b82c2b273ed1f64`
 (`ediz-remote/audit-drill:local`, build 69 sn). Akış ve yöntem
 [audit belgesinde](SECURITY_AUDIT.md#audit-arıza-tatbikatı).
@@ -256,6 +295,11 @@ hedefiyle build edildi:
 
 - Aynı image ile bir koşu daha (`--image ediz-remote/audit-drill:local`) aynı
   sonuçla geçti (503'ler 13 ms, çıkış 1773 ms).
+- Birleştirme sonrası `main` üzerinde bağımsız tekrar (`--image`, aynı image ID):
+  `/health` ve upgrade 503 tetikten 46 ms sonra, çıkış kodu 1 (2488 ms), log sırası
+  `ready, audit_unavailable, shutdown_failed, startup_failed×2`, beklenmeyen 0;
+  geri almadan 5,2 sn sonra `healthy`, `/health` 200, v3 101, yeni audit yazımı OK;
+  temizlik OK, `audit_drill:passed` (toplam 60,9 sn).
 - Restart zamanlaması Docker'ın geri çekilen restart gecikmesine bağlıdır; çıkış
   süresi bir saniyelik watchdog aralığı + kapanış süresidir.
 - Bu kanıt yerel amd64 build'idir; Pi'deki production `linux/arm64` image'ı ya da
