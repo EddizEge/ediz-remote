@@ -234,9 +234,19 @@ yeniden ister. Host'un bağlantıyı/görüntüyü yeniden deneme eylemi ilgili
 lane'leri hemen, yenileme isteği gönderildiyse yanıt gelince bir kez daha taze
 credential ile kurar. `native-video` offer'ını host ürettiği için guest yalnız
 native alıcısını yeniden kurduğunda host, WPF native eşinin `disconnected`/`closed`
-bildirimini aynı sınırlı backoff ile kendi yenilemesine çevirip yeni offer üretir;
-köprü veya negotiation kaynaklı `failed` kullanıcının yeniden denemesini bekler.
-Sunucu aktif/onaylı üyelik olmadan bu isteği kabul etmez.
+bildirimini aynı sınırlı backoff ile kendi yenilemesine çevirip yeni offer üretir.
+WPF native eşinin ICE/DTLS taşıması `failed` olursa (örneğin relay adayı guest
+vazgeçtikten sonra geldiğinde) köprü bunu `native_transport_failed` koduyla
+bildirir; host bunu da `disconnected` gibi aynı üç denemelik backoff'a çevirir ve
+denemeler tükenince fail-closed kilide geçer. Capture/encoder, köprü veya
+negotiation kaynaklı `failed` (`native_video_failed` ya da tanınmayan kod)
+kullanıcının yeniden denemesini bekler. Host'ta `connected` gelirse bekleyen
+yeniden offer iptal edilir; kısa bir `disconnected` sağlıklı akışı yeniden kurmaz.
+Guest native alıcısı `failed` olduktan sonra geç gelen uzak adayla yeniden
+`connecting`/`connected` olursa bekleyen yenileme iptal edilir ve canlanan eş
+kapatılmaz; yeniden düşerse aynı backoff yeniden zamanlanır. Canlanma yalnız yeni
+uzak aday ya da yeni offer ile olur; aday kuyrukları ve negotiation kimliği sınırı
+değişmez. Sunucu aktif/onaylı üyelik olmadan bu isteği kabul etmez.
 
 `peer_unavailable` aynı onaylı üyeliğin `accessMode` değerini değiştirmez;
 istemci yalnız P2P kaynaklarını durdurup recovery'ye geçer. Kontrol daha önce
@@ -412,10 +422,15 @@ accelerator'ları ayrıca WebView2 ayarında kapalıdır.
 Native→WebView durum mesajları yalnız sabit `errorCode` değerleri taşır:
 `initialization_failed`, `navigation_failed`, `capture_failed`,
 `encoder_failed`, `gpu_input_failed`, `control_input_failed`,
-`display_switch_failed`, `quality_switch_failed` ve `native_video_failed`.
-Exception metni, recovery reason, dosya/sürücü yolu, ICE/SDP veya credential
-köprü payload'ına yazılmaz. Web sınırı kodu yeniden allowlist ile doğrular ve
-yalnız sabit Türkçe kullanıcı metnine dönüştürür.
+`display_switch_failed`, `quality_switch_failed`, `native_video_failed` ve
+`native_transport_failed`. Exception metni, recovery reason, dosya/sürücü yolu,
+ICE/SDP veya credential köprü payload'ına yazılmaz. Web sınırı kodu yeniden
+allowlist ile doğrular ve yalnız sabit Türkçe kullanıcı metnine dönüştürür.
+`desktop.native-video.state` zarfında web sınırı `errorCode`'u yalnız iki sonuca
+indirir: `native_transport_failed` (yalnız WPF native eşinin taşıma durumu
+`failed` olduğunda; otomatik sınırlı kurtarma) ve diğer her sınırlı kod için
+`native_video_failed` (kullanıcı yeniden denemesi). Zarf yine strict anahtar ve
+64 karakter sınırıyla doğrulanır; boş, sayısal veya fazla uzun kod mesajı reddeder.
 
 Round-trip gecikmesi ping'i başlatan istemcinin kendi saatiyle ölçülür. Seçilen
 ICE candidate pair istatistiklerinde `relay` adayı yoksa arayüz bağlantıyı

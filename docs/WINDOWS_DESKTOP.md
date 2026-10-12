@@ -36,6 +36,15 @@ bağlantı kodu üretir, oturum kurar ve arayüzü kullanır.
 - DXGI/capture/encoder graph recovery durumları WebView2'ye taşınır. Üç otomatik
   deneme tükenirse kullanıcı `Yeniden dene` ile native oturumu güvenli biçimde
   baştan kurabilir.
+- Native SIPSorcery eşinin taşıma durumu `failed` olursa (ör. relay'e zorlanmış
+  ağda guest alıcısı host'un geç relay adayından önce vazgeçtiğinde) köprü
+  `native_transport_failed` gönderir; web host'u bunu `disconnected` gibi
+  "yeniden bağlanılıyor" olarak gösterir ve taze credential ile en çok üç kez
+  (1/2/4 sn) yeni offer üretir. Denemeler tükenince ve capture/encoder/köprü
+  kaynaklı `native_video_failed` durumunda kullanıcı `Görüntüyü yeniden dene`
+  ile devam eder. Eş yeniden `connected` bildirirse bekleyen yeniden offer iptal
+  edilir; guest alıcısı geç adayla canlanırsa bekleyen yenileme iptal edilip eş
+  korunur.
 - Kontrol onayında WebView2 köprüsü sürümlü `control.event` mesajlarını yeniden
   doğrular ve küçük `IInputInjector` arabirimi arkasındaki Windows `SendInput`
   katmanına aktarır.

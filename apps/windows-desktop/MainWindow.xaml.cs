@@ -697,7 +697,8 @@ public partial class MainWindow : Window
                 bridgeSessionEpoch,
                 negotiationId,
                 fatalLatch,
-                state);
+                state,
+                NativeVideoBridgeProtocol.PeerTransportErrorCode(state));
         };
         session.StreamFailed += _ =>
         {

@@ -114,6 +114,41 @@ describe('parseDesktopNativeMessage', () => {
     ), '22222222-2222-4222-8222-222222222222')).toBeNull()
   })
 
+  it('reduces native failure codes to the two bridge outcomes', () => {
+    const stateWith = (state: string, errorCode: unknown) =>
+      parseDesktopNativeMessage(nativeMessage(
+        'desktop.native-video.state',
+        {
+          state,
+          errorCode,
+          recoveryAttempt: null,
+          recoveryMaximumAttempts: null,
+        },
+      ), sessionEpoch)
+
+    expect(stateWith('failed', 'native_transport_failed')).toMatchObject({
+      payload: { state: 'failed', errorCode: 'native_transport_failed' },
+    })
+    expect(stateWith('failed', 'native_video_failed')).toMatchObject({
+      payload: { state: 'failed', errorCode: 'native_video_failed' },
+    })
+    expect(stateWith('connected', null)).toMatchObject({
+      payload: { state: 'connected', errorCode: null },
+    })
+    // Unknown codes never select the automatic transport recovery.
+    expect(stateWith('failed', 'capture_failed')).toMatchObject({
+      payload: { state: 'failed', errorCode: 'native_video_failed' },
+    })
+    expect(stateWith('failed', 'NATIVE_TRANSPORT_FAILED')).toMatchObject({
+      payload: { state: 'failed', errorCode: 'native_video_failed' },
+    })
+    // The bounded string and strict key rules still apply.
+    expect(stateWith('failed', '')).toBeNull()
+    expect(stateWith('failed', 'x'.repeat(65))).toBeNull()
+    expect(stateWith('failed', 7)).toBeNull()
+    expect(stateWith('failed', undefined)).toBeNull()
+  })
+
   it('does not forward native exception details to React state', () => {
     const message = parseDesktopNativeMessage(nativeMessage(
       'desktop.native-video.state',

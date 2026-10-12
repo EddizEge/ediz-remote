@@ -11,6 +11,9 @@ internal static class DesktopErrorCodes
     internal const string DisplaySwitchFailed = "display_switch_failed";
     internal const string QualitySwitchFailed = "quality_switch_failed";
     internal const string NativeVideoFailed = "native_video_failed";
+    // Only the native peer's ICE/DTLS transport failed; the web host re-offers
+    // within its bounded backoff instead of waiting for the user's retry.
+    internal const string NativeTransportFailed = "native_transport_failed";
 
     internal static bool IsAllowed(string? errorCode) =>
         errorCode is
@@ -22,7 +25,8 @@ internal static class DesktopErrorCodes
             ControlInputFailed or
             DisplaySwitchFailed or
             QualitySwitchFailed or
-            NativeVideoFailed;
+            NativeVideoFailed or
+            NativeTransportFailed;
 
     internal static string? RequireAllowed(string? errorCode)
     {

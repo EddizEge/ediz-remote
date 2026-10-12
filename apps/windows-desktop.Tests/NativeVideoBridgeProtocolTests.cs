@@ -144,6 +144,39 @@ public sealed class NativeVideoBridgeProtocolTests
             new string('x', NativeVideoBridgeProtocol.MaximumMessageBytes + 1)));
     }
 
+    [Theory]
+    [InlineData("New", null)]
+    [InlineData("Connecting", null)]
+    [InlineData("Connected", null)]
+    [InlineData("Disconnected", null)]
+    [InlineData("Closed", null)]
+    [InlineData("Failed", "native_transport_failed")]
+    public void PeerTransportStatesMapToTheRecoverableTransportCode(
+        string stateName,
+        string? expectedErrorCode)
+    {
+        var state = Enum.Parse<NativeVideoPeerState>(stateName);
+        var errorCode = NativeVideoBridgeProtocol.PeerTransportErrorCode(state);
+
+        Assert.Equal(expectedErrorCode, errorCode);
+        Assert.Equal(errorCode, DesktopErrorCodes.RequireAllowed(errorCode));
+        Assert.NotEqual(DesktopErrorCodes.NativeVideoFailed, errorCode);
+
+        using var envelope = JsonDocument.Parse(JsonSerializer.Serialize(
+            NativeVideoBridgeProtocol.CreateStateEnvelope(
+                SessionEpoch,
+                NegotiationId,
+                state,
+                errorCode,
+                null,
+                null)));
+        var payload = envelope.RootElement.GetProperty("payload");
+        Assert.Equal(
+            state.ToString().ToLowerInvariant(),
+            payload.GetProperty("state").GetString());
+        Assert.Equal(expectedErrorCode, payload.GetProperty("errorCode").GetString());
+    }
+
     [Fact]
     public void StateAndMetricsEnvelopesCarryTheCapturedNegotiationId()
     {

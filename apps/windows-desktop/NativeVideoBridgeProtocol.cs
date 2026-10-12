@@ -35,6 +35,14 @@ internal static class NativeVideoBridgeProtocol
         };
     }
 
+    // Error code for a state reported by the native peer transport itself.
+    // Stream, bridge and negotiation faults post `native_video_failed`
+    // explicitly and never pass through here.
+    internal static string? PeerTransportErrorCode(NativeVideoPeerState state) =>
+        state == NativeVideoPeerState.Failed
+            ? DesktopErrorCodes.NativeTransportFailed
+            : null;
+
     internal static object CreateStateEnvelope(
         string sessionEpoch,
         string negotiationId,

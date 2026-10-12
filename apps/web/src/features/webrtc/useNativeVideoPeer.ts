@@ -197,6 +197,12 @@ export function useNativeVideoPeer({
       })
     }
 
+    const cancelRecovery = () => {
+      if (recoveryTimer === null) return
+      window.clearTimeout(recoveryTimer)
+      recoveryTimer = null
+    }
+
     const failFatal = (error: unknown) => {
       if (disposed || !tripFatalNativeNegotiation(
         fatalLatch,
@@ -205,10 +211,7 @@ export function useNativeVideoPeer({
       )) return
       localDescriptionPublished = false
       activeLocalIceGeneration = null
-      if (recoveryTimer !== null) {
-        window.clearTimeout(recoveryTimer)
-        recoveryTimer = null
-      }
+      cancelRecovery()
       stopDesktopNativeSession()
       showFailure(error)
     }
@@ -259,6 +262,20 @@ export function useNativeVideoPeer({
             }
           } else if (message.type === 'desktop.native-video.state') {
             const status = parseNativeStatus(message.payload.state)
+            if (
+              status === 'failed' &&
+              message.payload.errorCode === 'native_transport_failed'
+            ) {
+              // The native peer's ICE/DTLS transport failed, e.g. relay
+              // candidates arrived after the guest gave up. Re-offer within
+              // the bounded backoff like `disconnected`; capture, encoder
+              // and bridge faults keep `native_video_failed` and wait for
+              // the user's retry.
+              setState((current) =>
+                toSafeNativeTransportFailureState(current, 'disconnected'))
+              scheduleRecovery()
+              return
+            }
             setState((current) => ({
               ...current,
               status,
@@ -268,6 +285,8 @@ export function useNativeVideoPeer({
                   : null,
             }))
             if (status === 'connected') {
+              // A transient drop healed; do not rebuild the healthy stream.
+              cancelRecovery()
               recoveryAttemptsRef.current = 0
             } else if (status === 'disconnected') {
               // Only the native peer transport reports disconnected/closed,
@@ -358,7 +377,13 @@ export function useNativeVideoPeer({
           setState((current) =>
             toSafeNativeTransportFailureState(current, 'disconnected'))
           scheduleRecovery()
+        } else if (connection.connectionState === 'connecting') {
+          // Chrome revives a failed peer when a late remote candidate (often
+          // the host's relay candidate) arrives. Let that attempt finish
+          // instead of closing it; another failure schedules recovery again.
+          cancelRecovery()
         } else if (connection.connectionState === 'connected') {
+          cancelRecovery()
           recoveryAttemptsRef.current = 0
           setState((current) => ({
             ...current,
@@ -494,7 +519,7 @@ export function useNativeVideoPeer({
       unsubscribeSignals()
       unsubscribeDesktop()
       peerConnection?.close()
-      if (recoveryTimer !== null) window.clearTimeout(recoveryTimer)
+      cancelRecovery()
       stopDesktopNativeSession()
     }
   }, [
@@ -536,7 +561,10 @@ export type DesktopNativeMessage =
       version: 2
       sessionEpoch: string
       negotiationId: string
-      payload: { state: DesktopNativeVideoState }
+      payload: {
+        state: DesktopNativeVideoState
+        errorCode: DesktopNativeVideoErrorCode | null
+      }
     }
   | {
       type: 'desktop.native-video.metrics'
@@ -546,6 +574,12 @@ export type DesktopNativeMessage =
       negotiationId: string
       payload: NativeVideoMetrics
     }
+
+// Only the transport code changes behaviour; any other bounded code from the
+// bridge collapses to the terminal `native_video_failed`.
+export type DesktopNativeVideoErrorCode =
+  | 'native_transport_failed'
+  | 'native_video_failed'
 
 type DesktopNativeVideoState =
   | 'new'
@@ -643,6 +677,7 @@ export function parseDesktopNativeMessage(
       negotiationId: value.negotiationId,
       payload: {
         state: value.payload.state,
+        errorCode: toDesktopNativeVideoErrorCode(value.payload.errorCode),
       },
     }
   }
@@ -780,6 +815,15 @@ function parseNativeStatus(value: DesktopNativeVideoState): NativeVideoStatus {
     case 'failed':
       return 'failed'
   }
+}
+
+function toDesktopNativeVideoErrorCode(
+  value: unknown,
+): DesktopNativeVideoErrorCode | null {
+  if (value === null) return null
+  return value === 'native_transport_failed'
+    ? 'native_transport_failed'
+    : 'native_video_failed'
 }
 
 function isDesktopNativeVideoState(
