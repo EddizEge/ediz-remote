@@ -302,6 +302,17 @@ fiziksel EXE smoke çalıştırılmadı. Bu aday, aynı günün `971506f` adayı
 }
 ```
 
+## İlk oturumda Windows Güvenlik Duvarı
+
+Native WebRTC eşi ICE için UDP soketlerini dinlemeye açar. Windows Defender
+Güvenlik Duvarı bunu bir EXE yolu için ilk kez gördüğünde "Windows Güvenliği" izin
+penceresi gösterir ve karar verilene kadar o yol için gelen trafiği engelleyen
+kurallar ekler (2026-10-12 geliştirme makinesinde her yeni EXE yolu için bir kez
+gözlendi; Windows 11'de pencere `PickerHost.exe` içinde açılır). **İzin ver**
+önerilir; izin verilmezse dışarıdan gelen doğrudan P2P denemeleri bazı ağlarda
+kurulamaz ve bağlantı TURN relay'e düşer. Kod bu kuralları kendisi eklemez veya
+değiştirmez; kalıcı kural kurulumu Faz 5 installer kapsamındadır.
+
 ## Mevcut sınırlar
 
 Windows host canlı paylaşımda DXGI → NV12 → donanım H.264 → DTLS-SRTP hattını

@@ -374,7 +374,9 @@ sonrasına bırakılmıştır.
   `verify-provenance` yerel attestation olmadığı için beklenen
   `provenance_attestation_invalid`. İlk GitHub koşusu (run `38107001498`,
   `8701f78`, sequence 1) `windows-v0.1.0.1` taslağını attest etti; ayrı makinede
-  4/4 `gh attestation verify` ve zip ağacında `verify-provenance` geçti. Temiz
+  4/4 `gh attestation verify` ve zip ağacında `verify-provenance` geçti.
+  2026-10-12 çökme düzeltmeli ikinci koşu (run `38200657904`, `fa24b20`,
+  sequence 2) aynı doğrulamadan geçti ve `windows-v0.1.0.2` yayımlandı. Temiz
   Windows 10/11 kanıtı bekliyor.
 
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
@@ -757,17 +759,21 @@ Kalan yapılacaklar:
 
 - 2026-10-12'de production üzerinden `windows-v0.1.0.1` paketiyle gerçek oturumlar
   (doğrudan P2P, TURN relay, kontrol/revoke) geçti; birinde yayın EXE'si native
-  erişim ihlaliyle kapandı (ER-T15). Kök nedeni düzelt, yeni yayın (sequence 2)
-  üret ve oturum senaryolarını tekrar koş.
+  erişim ihlaliyle kapandı (ER-T15). Kök neden NVIDIA asenkron MFT kapanış yarışıydı
+  (`fe10421`); düzeltmeli `windows-v0.1.0.2` production'da 13 senaryoda çökmedi ve
+  yayımlandı.
+- ICE yenilemesinde lane yalıtımı (ER-T16): bir lane'in `refresh_ice` yanıtı diğer
+  lane'in sağlıklı eşini yeniden kurmamalı (`laneIceConfiguration.ts`, `4d4b470`).
+  Web'i Pi'ye doğrulanmış akışla al, düzeltmeli yayını (sequence 3) üret ve relay/
+  kurtarma senaryolarını production'da tekrar koş.
 - Audit arıza tatbikatı (`npm run security:audit-drill`, izole Docker) ve gerçek
   oturum sonrası production log/audit örneği 2026-10-12'de tamamlandı.
 - Pi `linux/arm64` kapısı ve doğrulanmış production deployment'ı 2026-10-12'de
   tamamlandı: deploy öncesi 3/3 sıfır bulgu, `security:container:deploy`, iki
   `healthy`, UID 1000 secret/audit volume, coturn log sürücüsü `none`, dış
   HTTPS/WSS politika testi. Yeniden deploy'da kapı 48 saat içinde tazelenir.
-- `windows-v0.1.0.1` taslağının (ilk attest edilmiş GitHub yayını, 2026-10-11'de
-  bağımsız doğrulandı) temiz Windows 10/11 doğrulamasını (SmartScreen davranışı
-  dahil) kaydet ve taslağı yayımla. Sertifika gelince
+- Yayımlanan Windows sürümünün temiz Windows 10/11 doğrulamasını (SmartScreen ve
+  ilk oturumdaki Windows Güvenlik Duvarı izin penceresi dahil) kaydet. Sertifika gelince
   gerçek OV/EV store/HSM sertifikasıyla EXE + katalog imzasını ve RFC3161
   timestamp'i ayrıca üret. Mevcut artifact hâlâ `NotSigned`dır; yayın temiz
   klondan, sequence ≥ 1 ve güvenilir tabanla üretilmelidir.
@@ -984,9 +990,10 @@ kapısı 2026-10-09'da, Pi `linux/arm64` kapısı 2026-10-11'de üç hedefte ger
 bulguyla geçti. GitHub'da derlenip attest edilen ilk Windows yayını
 (`windows-v0.1.0.1` taslağı) 2026-10-11'de bağımsız doğrulandı; Pi production
 2026-10-12'de doğrulanmış Faz 4 container'larıyla v3'e geçti; aynı gün gerçek
-oturum sonrası log/audit örneği ve audit arıza tatbikatı tamamlandı. Sıradaki iş
-production oturumunda görülen native çökmenin (ER-T15) düzeltilmesi ve yeni
-yayının temiz Windows 10/11 doğrulamasıdır
+oturum sonrası log/audit örneği ve audit arıza tatbikatı tamamlandı; native çökme
+(ER-T15) düzeltildi ve `windows-v0.1.0.2` yayımlandı. Sıradaki iş ICE yenilemesi
+lane yalıtımının (ER-T16) production'a alınması ve yayının temiz Windows 10/11
+doğrulamasıdır
 (sertifika gelene kadar imzasız provenance yolu, depo sahibi kararı 2026-10-11). Başlamadan
 `docs/THREAT_MODEL.md` ve `docs/PHASE4_PLAN.md` dosyalarını oku. Wire v1/v2
 adayları ile alt protokol teklif etmeyen eski EXE'ler v3 sunucuya bağlanamaz;

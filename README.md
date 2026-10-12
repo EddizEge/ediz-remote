@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="#indir-ve-kullan">İndir</a> ·
   <a href="#hızlı-başlangıç">Hızlı başlangıç</a> ·
   <a href="#nasıl-çalışır">Mimari</a> ·
   <a href="#yol-haritası">Yol haritası</a> ·
@@ -35,8 +36,9 @@ Kendi sunucundaki signaling servisi kod, onay ve bağlantı görüşmesini yöne
 doğrudan bağlantı kurulamazsa coturn devreye girer.
 
 > **Geliştirme durumu:** Faz 1–3 tamamlandı; Faz 4 güvenlik sertleştirmesi sürüyor.
-> İmzalı installer ve production Windows release kabulü henüz tamamlanmadı.
-> Kaynak kod paylaşımı, hazır ve imzalı bir son kullanıcı sürümü anlamına gelmez.
+> İlk kullanılabilir Windows sürümü [GitHub Releases](https://github.com/EddizEge/ediz-remote/releases/latest)
+> sayfasında; imzasızdır, kaynağı ve bütünlüğü GitHub attestation ile doğrulanır.
+> İmzalı installer ve temiz Windows 10/11 kabulü henüz tamamlanmadı.
 
 ## Neler sunuyor?
 
@@ -96,6 +98,26 @@ giriş enjeksiyonu başlamaz.
 **Teknoloji:** React 19 · TypeScript · Vite · Express · WebSocket · Zod ·
 .NET 8 · WPF · WebView2 · SIPSorcery · D3D11 · Media Foundation
 
+## İndir ve kullan
+
+Windows sürümü [GitHub Releases](https://github.com/EddizEge/ediz-remote/releases/latest)
+sayfasında yayınlanır; kurulum gerektirmez.
+
+1. **Destek alan:** `EdizRemote.win-x64.zip` dosyasını indirip bir klasöre çıkarın
+   ve `win-x64\EdizRemote.exe` dosyasını açın. Uygulama henüz imzasız olduğu için
+   Windows SmartScreen uyarı gösterebilir: **Ek bilgi → Yine de çalıştır**. İlk
+   oturumda Windows Güvenlik Duvarı izin isterse **İzin ver** seçin.
+2. Ekrandaki 6 haneli kodu destek verene iletin; gelen isteği **Yalnızca görüntüle**
+   ya da **Görüntüle + kontrol et** ile onaylayın.
+3. **Destek veren:** <https://remote.edizegemercan.com.tr> adresini Chrome ya da Edge
+   ile açıp kodu girin (veya aynı Windows uygulamasından bağlanın).
+4. Kontrol izni ayrı verilir; **Kontrolü geri al**, **Bağlantıyı kes** ve
+   `Ctrl+Alt+Shift+F12` acil durdurma her an kullanılabilir.
+
+İndirilen dosyanın kaynağı ve bütünlüğü sürüm notlarındaki SHA-256 değerleri ve
+`gh attestation verify` komutuyla doğrulanabilir
+([Windows release rehberi](docs/WINDOWS_RELEASE.md#provenance-github-attestation-yolu)).
+
 ## Hızlı başlangıç
 
 Node.js 22+ LTS ve Git gerekir.
@@ -152,9 +174,9 @@ npm run security:audit
 ```
 
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
-ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-12 tabanında seed'li fuzz,
-signaling durum makinesi matrisi ve audit tatbikatı birim testleri dahil 591 npm
-testi başarılıdır (1 ortam testi atlanır); 2026-10-11 GitHub derlemesinde 42 native
+ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-12 GitHub yayın derlemesinde
+seed'li fuzz, signaling durum makinesi matrisi ve audit tatbikatı birim testleri
+dahil 600 npm testi başarılıdır (1 ortam testi atlanır); aynı derlemede 54 native
 (+1 atlanan), 113 desktop ve 234 Windows release testi geçmiştir. Audit yazım
 arızasının fail-closed davranışı `npm run security:audit-drill` ile yerel Docker'da
 tatbik edilir. Bu sayılar tarihsel doğrulamadır; ayrıntılar
@@ -176,9 +198,11 @@ sıfır bulgu, read-only, UID 1000) wire v3'e geçti. Aynı gün GitHub'da derle
 attest edilen ilk Windows paketiyle production üzerinden gerçek oturumlar
 (doğrudan P2P ve TURN relay, kontrol/revoke) kuruldu; sonrasında production
 log/audit dosyalarında hassas veri bulunmadı ve audit arıza davranışı izole
-Docker tatbikatıyla doğrulandı. Faz 4'te kalan başlıca işler: bir arıza
-senaryosunda görülen masaüstü çökmesinin düzeltilmesi ve Windows yayınının temiz
-Windows 10/11 doğrulaması.
+Docker tatbikatıyla doğrulandı. Bir arıza senaryosunda görülen masaüstü çökmesi
+(NVIDIA donanım encoder'ının kapanış yarışı) aynı gün düzeltildi ve
+`windows-v0.1.0.2` yayımlandı. Faz 4'te kalan başlıca işler: relay kurtarmasında
+ICE yenilemesinin diğer bağlantıyı etkilememesi için yapılan düzeltmenin
+production'a alınması ve Windows yayınının temiz Windows 10/11 doğrulaması.
 Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
 bütünlük ve kaynak GitHub artifact attestation + SHA-256 ile doğrulanır
 (`npm run release:windows:verify-provenance`), SmartScreen ilk çalıştırmada uyarı
