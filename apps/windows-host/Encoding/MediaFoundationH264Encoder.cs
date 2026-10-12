@@ -18,6 +18,7 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
 {
     internal static readonly Guid Nv12Subtype =
         new("3231564E-0000-0010-8000-00AA00389B71");
+    internal static readonly TimeSpan ReleaseDrainTimeout = TimeSpan.FromSeconds(2);
 
     private readonly IMFActivate _activation;
     private readonly IMFTransform _transform;
@@ -50,8 +51,9 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
         _width = width;
         _height = height;
         _frameRate = frameRate;
-        var startup = MediaFactory.MFStartup();
-        DisplayCatalog.ThrowIfFailed(startup, "Media Foundation başlatılamadı");
+        DisplayCatalog.ThrowIfFailed(
+            MediaFoundationPlatform.EnsureStarted(),
+            "Media Foundation başlatılamadı");
         try
         {
             _deviceManager = MediaFactory.MFCreateDXGIDeviceManager();
@@ -65,13 +67,19 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
                 GuidSubtype = HardwareEncoderCatalog.H264Subtype,
             };
             var flags = (uint)(EnumFlag.EnumFlagHardware | EnumFlag.EnumFlagSortandfilter);
-            using var activations = MediaFactory.MFTEnumEx(
-                TransformCategoryGuids.VideoEncoder,
-                flags,
-                inputType: null,
-                outputRegistration);
-            _activation = activations.FirstOrDefault()
-                ?? throw new NotSupportedException("Donanım H.264 encoder bulunamadı.");
+            using (var activations = MediaFactory.MFTEnumEx(
+                       TransformCategoryGuids.VideoEncoder,
+                       flags,
+                       inputType: null,
+                       outputRegistration))
+            {
+                // Disposing the enumeration releases every activation wrapper
+                // it returned. Keep an owned reference so Dispose can call
+                // ShutdownObject on the activated transform.
+                var activation = activations.FirstOrDefault()
+                    ?? throw new NotSupportedException("Donanım H.264 encoder bulunamadı.");
+                _activation = activation.QueryInterface<IMFActivate>();
+            }
             _transform = _activation.ActivateObject<IMFTransform>();
 
             using (var attributes = _transform.Attributes)
@@ -450,13 +458,28 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
         return types;
     }
 
-    private void DisposePartiallyConstructed()
+    private void DisposePartiallyConstructed() => ReleaseGraph();
+
+    private void ReleaseGraph()
     {
-        _eventGenerator?.Dispose();
-        _transform?.Dispose();
-        _activation?.Dispose();
-        _deviceManager?.Dispose();
-        MediaFactory.MFShutdown();
+        var eventGenerator = _eventGenerator;
+        var transform = _transform;
+        var activation = _activation;
+        var deviceManager = _deviceManager;
+        DeferredTransformRelease.Schedule(() =>
+        {
+            eventGenerator?.Dispose();
+            if (transform is not null)
+            {
+                // Asynchronous hardware MFTs stop their worker threads and
+                // event queue only through the activation object; releasing
+                // the last reference alone leaves that shutdown to the driver.
+                HardwareEncoderCatalog.ShutdownActivatedObject(activation);
+            }
+            transform?.Dispose();
+            activation?.Dispose();
+            deviceManager?.Dispose();
+        });
     }
 
     public void Dispose()
@@ -465,13 +488,13 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
         _disposed = true;
         if (_streaming)
         {
+            var idle = TryDrainBeforeRelease(ReleaseDrainTimeout);
             try
             {
-                if (!_ended)
+                if (!idle)
                 {
-                    _transform.ProcessMessage(TMessageType.MessageNotifyEndOfStream, UIntPtr.Zero);
+                    _transform.ProcessMessage(TMessageType.MessageCommandFlush, UIntPtr.Zero);
                 }
-                _transform.ProcessMessage(TMessageType.MessageCommandFlush, UIntPtr.Zero);
                 _transform.ProcessMessage(TMessageType.MessageNotifyEndStreaming, UIntPtr.Zero);
             }
             catch
@@ -479,10 +502,42 @@ internal sealed class MediaFoundationH264Encoder : IDisposable
                 // Dispose must still release the COM graph after a device loss.
             }
         }
-        _eventGenerator.Dispose();
-        _transform.Dispose();
-        _activation.Dispose();
-        _deviceManager.Dispose();
-        MediaFactory.MFShutdown();
+        ReleaseGraph();
+    }
+
+    // The asynchronous NVIDIA H.264 MFT encodes on its own Media Foundation
+    // work queue and does not keep itself alive for a queued job. Every
+    // encoder generation is drained before release so no submitted frame is
+    // still in flight; pending output is discarded. The drain alone did not
+    // stop the crash, so ReleaseGraph also defers the final release.
+    private bool TryDrainBeforeRelease(TimeSpan timeout)
+    {
+        try
+        {
+            if (!_ended)
+            {
+                _transform.ProcessMessage(TMessageType.MessageNotifyEndOfStream, UIntPtr.Zero);
+                _transform.ProcessMessage(TMessageType.MessageCommandDrain, UIntPtr.Zero);
+                _ended = true;
+                _drainComplete = false;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            while (!_drainComplete)
+            {
+                PumpNextEvent(stopwatch, timeout, 0, 10_000_000L / _frameRate);
+            }
+            return true;
+        }
+        catch
+        {
+            // Device loss, an encoder error event or a drain timeout: the
+            // release falls back to a flush and can no longer be proven idle.
+            return false;
+        }
+        finally
+        {
+            _outputFrames.Clear();
+        }
     }
 }

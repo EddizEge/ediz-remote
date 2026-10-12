@@ -36,7 +36,7 @@ internal static class HardwareEncoderCatalog
             return Unavailable("Media Foundation yalnızca Windows üzerinde kullanılabilir.");
         }
 
-        var startupResult = MediaFactory.MFStartup();
+        var startupResult = MediaFoundationPlatform.EnsureStarted();
         if (startupResult.Failure)
         {
             return Unavailable(
@@ -90,10 +90,6 @@ internal static class HardwareEncoderCatalog
         {
             return Unavailable("Donanım H.264 encoder keşfi tamamlanamadı.");
         }
-        finally
-        {
-            MediaFactory.MFShutdown();
-        }
     }
 
     private static string? ReadString(IMFActivate activation, Guid key)
@@ -126,15 +122,36 @@ internal static class HardwareEncoderCatalog
         try
         {
             using var transform = activation.ActivateObject<IMFTransform>();
-            using var attributes = transform.Attributes;
-            var d3d11Aware = attributes.GetUInt32(
-                TransformAttributeKeys.D3D11Aware,
-                out var value).Success && value != 0;
-            return (true, d3d11Aware, null);
+            try
+            {
+                using var attributes = transform.Attributes;
+                var d3d11Aware = attributes.GetUInt32(
+                    TransformAttributeKeys.D3D11Aware,
+                    out var value).Success && value != 0;
+                return (true, d3d11Aware, null);
+            }
+            finally
+            {
+                ShutdownActivatedObject(activation);
+            }
         }
         catch (Exception)
         {
             return (false, false, "Encoder etkinleştirilemedi.");
+        }
+    }
+
+    // An activated (possibly asynchronous) hardware MFT is shut down through
+    // its activation object before the last reference is released.
+    internal static void ShutdownActivatedObject(IMFActivate activation)
+    {
+        try
+        {
+            activation.ShutdownObject();
+        }
+        catch
+        {
+            // Release continues even if the driver already tore the MFT down.
         }
     }
 

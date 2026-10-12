@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     private const string VirtualHost = "app.ediz-remote.local";
     private const string VirtualHostIndexUrl = "https://" + VirtualHost + "/index.html";
     private const int VirtualKeyControl = 0x11;
+    private static readonly TimeSpan NativeShutdownTimeout = TimeSpan.FromSeconds(30);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ControlInputSession _controlInputSession;
     private readonly EmergencyStopHotKey _emergencyStopHotKey = new();
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
     private readonly WebViewNavigationPolicy _webViewNavigationPolicy =
         new(VirtualHostIndexUrl);
     private NativeVideoHostSession? _nativeVideoSession;
+    private readonly HashSet<NativeVideoHostSession> _disposingNativeSessions = [];
     private IReadOnlyList<NativeVideoIceServer>? _nativeIceServers;
     private string? _nativeBridgeSessionEpoch;
     private string? _nativeNegotiationId;
@@ -907,10 +909,6 @@ public partial class MainWindow : Window
 
     private void ApplyNativeVideoSignal(JsonElement root)
     {
-        var session = _nativeVideoSession
-            ?? throw new InvalidOperationException("Native video oturumu başlatılmadı.");
-        var fatalLatch = _nativeNegotiationFatalLatch
-            ?? throw new InvalidOperationException("Native video nesli bulunamadı.");
         if (!NativeVideoBridgeProtocol.TryParseSignal(
                 root,
                 out var sessionEpoch,
@@ -919,6 +917,13 @@ public partial class MainWindow : Window
         {
             throw new InvalidOperationException("Native video sinyali geçersiz.");
         }
+        // A display/quality switch or stop detaches the session before its
+        // asynchronous disposal finishes. A well-formed signal for that old
+        // generation is stale: dropping it keeps it from tearing down the
+        // replacement session through the fail-closed error path.
+        var session = _nativeVideoSession;
+        var fatalLatch = _nativeNegotiationFatalLatch;
+        if (session is null || fatalLatch is null) return;
         if (!string.Equals(
                 _nativeBridgeSessionEpoch,
                 sessionEpoch,
@@ -994,6 +999,21 @@ public partial class MainWindow : Window
 
     private async Task StopNativeVideoAsync()
     {
+        var session = DetachNativeVideoSession();
+        if (session is null) return;
+        _disposingNativeSessions.Add(session);
+        try
+        {
+            await session.DisposeAsync();
+        }
+        finally
+        {
+            _disposingNativeSessions.Remove(session);
+        }
+    }
+
+    private NativeVideoHostSession? DetachNativeVideoSession()
+    {
         var session = _nativeVideoSession;
         _nativeNegotiationFatalLatch?.TryTrip();
         _nativeVideoSession = null;
@@ -1001,7 +1021,29 @@ public partial class MainWindow : Window
         _nativeNegotiationFatalLatch = null;
         _pendingNativeRemoteCandidates = null;
         _nativeRemoteDescriptionSet = false;
-        if (session is not null) await session.DisposeAsync();
+        return session;
+    }
+
+    // Window close cannot await, and blocking on an async method that resumes
+    // on this dispatcher would deadlock. Session disposal runs on the thread
+    // pool and is shared by every caller, so the current session and any
+    // teardown still in flight from a gated operation are awaited directly
+    // before the process may exit with native capture/encoder threads alive.
+    private void WaitForNativeSessionShutdown()
+    {
+        var sessions = _disposingNativeSessions.ToList();
+        var current = DetachNativeVideoSession();
+        if (current is not null) sessions.Add(current);
+        if (sessions.Count == 0) return;
+        try
+        {
+            Task.WhenAll(sessions.Select(session => session.DisposeAsync().AsTask()))
+                .Wait(NativeShutdownTimeout);
+        }
+        catch
+        {
+            // Failures were already published; closing continues.
+        }
     }
 
     private async Task StopNativeVideoAfterLocalCandidateOverflowAsync(
@@ -1273,8 +1315,9 @@ public partial class MainWindow : Window
         _controlInputSession.Disable();
         _emergencyStopHotKey.Triggered -= OnEmergencyStop;
         _emergencyStopHotKey.Dispose();
-        StopNativeVideoAsync().GetAwaiter().GetResult();
-        _nativeSessionMutationGate.Dispose();
+        WaitForNativeSessionShutdown();
+        // The mutation gate is not disposed: a gated bridge operation that is
+        // still unwinding after close must be able to release it.
         WebView.Dispose();
     }
 
