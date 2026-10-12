@@ -71,6 +71,23 @@ interface UseNativeVideoPeerOptions {
   requestIceRefresh: () => boolean
 }
 
+// The native host may send its offer with only a host candidate and trickle
+// srflx/relay about a second later. A guest receiver that has not connected in
+// the current negotiation can fail on the early private candidates alone, so
+// it waits this long for late candidates before rebuilding; a receiver that
+// already connected keeps the regular backoff.
+export const NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS = 5_000
+
+export function nativeRecoveryDelay(
+  attempts: number,
+  connectedInNegotiation: boolean,
+): number {
+  const backoff = 1_000 * 2 ** attempts
+  return connectedInNegotiation
+    ? backoff
+    : Math.max(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS, backoff)
+}
+
 const IDLE_STATE: NativeVideoPeerState = {
   status: 'idle',
   remoteStream: null,
@@ -150,6 +167,9 @@ export function useNativeVideoPeer({
     let activeNegotiationId: string | null = null
     let activeLocalIceGeneration: LocalIceGenerationBinding | null = null
     let localDescriptionPublished = false
+    // Only the guest receiver tracks this; the native host keeps the regular
+    // backoff because WPF already reports its own transport state.
+    let connectedInNegotiation = nativeHost
     const pendingRemoteCandidates = new PendingIceCandidateQueue()
     const pendingLocalCandidates = new PendingIceCandidateQueue()
     const desktopNegotiations = new DesktopNativeNegotiationTracker()
@@ -226,7 +246,7 @@ export function useNativeVideoPeer({
         recoveryTimer = null
         recoveryAttemptsRef.current += 1
         if (!requestOwnIceRefresh()) scheduleRecovery()
-      }, 1_000 * 2 ** recoveryAttemptsRef.current)
+      }, nativeRecoveryDelay(recoveryAttemptsRef.current, connectedInNegotiation))
     }
 
     const sendNativeSignal = (signal: PeerSignal) => {
@@ -385,6 +405,7 @@ export function useNativeVideoPeer({
         } else if (connection.connectionState === 'connected') {
           cancelRecovery()
           recoveryAttemptsRef.current = 0
+          connectedInNegotiation = true
           setState((current) => ({
             ...current,
             status: 'connected',
@@ -437,6 +458,7 @@ export function useNativeVideoPeer({
       activeNegotiationId = negotiationId
       activeLocalIceGeneration = null
       localDescriptionPublished = false
+      connectedInNegotiation = false
       pendingRemoteCandidates.beginNegotiation(negotiationId)
       pendingLocalCandidates.beginNegotiation(negotiationId)
       await peerConnection.setRemoteDescription(signal.description)
