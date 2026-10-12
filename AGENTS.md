@@ -376,8 +376,14 @@ sonrasına bırakılmıştır.
   `8701f78`, sequence 1) `windows-v0.1.0.1` taslağını attest etti; ayrı makinede
   4/4 `gh attestation verify` ve zip ağacında `verify-provenance` geçti.
   2026-10-12 çökme düzeltmeli ikinci koşu (run `38200657904`, `fa24b20`,
-  sequence 2) aynı doğrulamadan geçti ve `windows-v0.1.0.2` yayımlandı. Temiz
-  Windows 10/11 kanıtı bekliyor.
+  sequence 2) aynı doğrulamadan geçti ve `windows-v0.1.0.2` yayımlandı. Aynı gün
+  ER-T16/ER-T17 düzeltmeli koşular (`2ebd1ee` sequence 4, `0589cad` sequence 5)
+  de geçti; `windows-v0.1.0.4` ve `windows-v0.1.0.5` yayımlandı. Temiz Windows
+  10/11 kanıtı bekliyor.
+- 2026-10-12 ER-T16/ER-T17 sonrası `main` (`0589cad`, GitHub yayın derlemesi):
+  toplu `npm test` 614 + 1 atlanan (TURN 13, güvenli çıktı 10, container 22, audit
+  tatbikatı 15, web 129, protocol 18, signaling 407 + 1); native 54 + 1; desktop
+  125; Windows release 234; `security:audit` temiz.
 
 Bu sayıları sabit kabul etme; test eklendiğinde bu bölümü güncelle.
 
@@ -762,10 +768,13 @@ Kalan yapılacaklar:
   erişim ihlaliyle kapandı (ER-T15). Kök neden NVIDIA asenkron MFT kapanış yarışıydı
   (`fe10421`); düzeltmeli `windows-v0.1.0.2` production'da 13 senaryoda çökmedi ve
   yayımlandı.
-- ICE yenilemesinde lane yalıtımı (ER-T16): bir lane'in `refresh_ice` yanıtı diğer
-  lane'in sağlıklı eşini yeniden kurmamalı (`laneIceConfiguration.ts`, `4d4b470`).
-  Web'i Pi'ye doğrulanmış akışla al, düzeltmeli yayını (sequence 3) üret ve relay/
-  kurtarma senaryolarını production'da tekrar koş.
+- ICE yenilemesinde lane yalıtımı (ER-T16) 2026-10-12'de kapandı: lane başına ICE
+  yenilemesi (`laneIceConfiguration.ts`, `4d4b470`), WPF taşıma düşüşünde sınırlı
+  otomatik yeniden offer (`native_transport_failed`, `554207f`) ve hiç bağlanmamış
+  guest alıcısına 5 sn geç aday toleransı (`75d530b`). Web Pi'de `0bdd4d2`;
+  zorlanmış relay + kontrol 5/5. WebView2 çöküşünden sonra "Yeniden dene"nin
+  arayüzü baştan kurması (ER-T17, `f320de8`) da aynı gün düzeltildi;
+  `windows-v0.1.0.5` yayımlandı.
 - Audit arıza tatbikatı (`npm run security:audit-drill`, izole Docker) ve gerçek
   oturum sonrası production log/audit örneği 2026-10-12'de tamamlandı.
 - Pi `linux/arm64` kapısı ve doğrulanmış production deployment'ı 2026-10-12'de
@@ -991,8 +1000,9 @@ bulguyla geçti. GitHub'da derlenip attest edilen ilk Windows yayını
 (`windows-v0.1.0.1` taslağı) 2026-10-11'de bağımsız doğrulandı; Pi production
 2026-10-12'de doğrulanmış Faz 4 container'larıyla v3'e geçti; aynı gün gerçek
 oturum sonrası log/audit örneği ve audit arıza tatbikatı tamamlandı; native çökme
-(ER-T15) düzeltildi ve `windows-v0.1.0.2` yayımlandı. Sıradaki iş ICE yenilemesi
-lane yalıtımının (ER-T16) production'a alınması ve yayının temiz Windows 10/11
+(ER-T15) düzeltildi ve `windows-v0.1.0.2` yayımlandı; ICE yenilemesi lane
+yalıtımı (ER-T16) ve WebView2 arayüz kurtarması (ER-T17) düzeltilip production'a
+alındı, `windows-v0.1.0.5` yayımlandı. Sıradaki iş yayının temiz Windows 10/11
 doğrulamasıdır
 (sertifika gelene kadar imzasız provenance yolu, depo sahibi kararı 2026-10-11). Başlamadan
 `docs/THREAT_MODEL.md` ve `docs/PHASE4_PLAN.md` dosyalarını oku. Wire v1/v2

@@ -470,7 +470,7 @@ içindeki EXE tekil EXE ile aynı; zip'ten açılan ağaçta `verify-provenance`
   kontrol 9/9, zorlanmış relay 6/8; kalan iki relay hatası guest tarafındaki geç
   aday yarışıydı ve yalnız web'de düzeltildi (`75d530b`, Pi'de `0bdd4d2`). Aynı
   EXE web `0bdd4d2` ile zorlanmış relay + kontrol 5/5 geçti (görüntü 3,1–4,3 sn).
-  `windows-v0.1.0.4` 2026-10-12T06:05:05Z'de yayımlandı (Latest).
+  `windows-v0.1.0.4` 2026-10-12T06:05:05Z'de yayımlandı (`0.1.0.5`'e dek Latest).
 
 | Sürüm | Dosya | Boyut | SHA-256 |
 |---|---|---|---|
@@ -486,6 +486,34 @@ içindeki EXE tekil EXE ile aynı; zip'ten açılan ağaçta `verify-provenance`
 EXE kimlikleri: `ProductVersion 0.1.0+4f848f3008369cc9b0e5338b2206df60a19276ea`,
 `FileVersion 0.1.0.3` ve `ProductVersion 0.1.0+2ebd1ee925c2e7fad08baae12d1aa4552fdbdde4`,
 `FileVersion 0.1.0.4`; ikisi de Authenticode `NotSigned`.
+
+### ER-T17 düzeltmeli koşu ve yayın (2026-10-12)
+
+WebView2 tarayıcı süreci çöktükten sonra "Yeniden dene"nin arayüzü baştan
+kurması (`f320de8`, birleşme `215e783`) için run `38212288060` (`0589cad`,
+sequence `5`) iki işte de başarılı oldu. CI'da npm 614 + 1 atlanan, native 54 + 1
+atlanan, desktop 125, release 234 test ve `security:audit` geçti. Bağımsız
+doğrulama: dört dosya için en sıkı `gh attestation verify` başarılı, yanlış
+commit ile düştü; zip içindeki EXE tekil EXE ile aynı; SHA256SUMS 12/12;
+`verify-provenance` (taban 5) `WINDOWS_RELEASE_PROVENANCE_VERIFY_OK`.
+
+| Dosya | Boyut | SHA-256 |
+|---|---|---|
+| `EdizRemote.exe` | `184864000` | `11bbc4ee6f06ecea98f79131b5067a6e415290a3d7cbf8e62c844320a7ed9aa1` |
+| `EdizRemote.win-x64.zip` | `79941633` | `9b2e1b7af720a3eb0299a780dfc7e8095e2e497f1a8d4dd253aeab3f097d785b` |
+| `EdizRemote.win-x64.provenance.json` | `2724` | `899d105a18f292edfd3e4c096bc84d8e37debece33e9dea2694bc53e3c90c037` |
+| `EdizRemote.win-x64.SHA256SUMS` | `1188` | `1039e69b87cc8397e35e7851ebc8110c90435ff106ada3e5b6b081401cdfc14b` |
+
+EXE kimliği `ProductVersion 0.1.0+0589cad4be215a61d8a58cc55ca47aa33584a4da`,
+`FileVersion 0.1.0.5`, Authenticode `NotSigned`. Production duman testleri
+(geliştirme makinesi, web `0bdd4d2`): doğrudan P2P + kontrol/imleç/revoke geçti;
+zorlanmış relay + kontrol 3/3 (biri tarayıcı çökmesinden kurtarılan arayüzde;
+görüntü 2,9–3,5 sn); iki koşuda yerel RTSS kancası WebView2'yi açılışta çökertti
+(döküm `RTSSHooks64` içinde erişim ihlali) ve "Yeniden dene" arayüzü ~1 sn'de
+geri getirdi; tarayıcı süreci öldürülünce retry 1,2–1,8 sn'de kurtardı; oturum
+ortasında host tarayıcısı öldürülünce guest'in iki bağlantısı ~1 sn'de kapandı,
+kontrol kapandı ve görüntü durdu, retry sonrası yeni oturum geçti; uygulama
+çökmesi 0. `windows-v0.1.0.5` 2026-10-12T06:39:35Z'de yayımlandı (Latest).
 
 Kalan: temiz Windows 10/11 makinesinde indirme + çalıştırma + SmartScreen
 davranışı kanıtı. Bu alınmadan kriter karşılanmış sayılmaz.

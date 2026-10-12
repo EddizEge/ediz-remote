@@ -203,7 +203,8 @@ Dilim 4 kararı:
   `windows-v0.1.0.4` yayımlandı; zorlanmış relay + kontrol 5/5.)
 - [x] WebView2 tarayıcı süreci çöktükten sonra "Yeniden dene" arayüzü baştan
   kursun (ER-T17). (2026-10-12: `f320de8`; çökmüş denetimin `CoreWebView2`
-  üyesine dokunulmaz; production üzerinden çökme → retry → oturum geçti.)
+  üyesine dokunulmaz; production üzerinden çökme → retry → oturum geçti;
+  `windows-v0.1.0.5` yayımlandı.)
 - [x] Depo sahibi kararı (2026-10-11): sertifika gelene kadar imzasız provenance
   yolu. `release:windows:provenance` sign kapısıyla aynı kaynak/commit/sürüm/
   sequence/taban ön koşullarıyla tüm `win-x64` ağacı için strict, kanonik
@@ -218,10 +219,10 @@ Dilim 4 kararı:
   taslak yayın (2026-10-11, run `38107001498`, `8701f78`, `windows-v0.1.0.1`;
   ayrı makinede 4/4 `gh attestation verify` ve `verify-provenance` OK).
 - [ ] Yayının temiz Windows 10/11 doğrulaması ve SmartScreen davranışının
-  kaydı. (2026-10-12: `windows-v0.1.0.1` – `0.1.0.4` paketleriyle production
+  kaydı. (2026-10-12: `windows-v0.1.0.1` – `0.1.0.5` paketleriyle production
   üzerinden gerçek oturumlar geliştirme makinesinde geçti; `windows-v0.1.0.2`
-  (run `38200657904`, `fa24b20`) ve `windows-v0.1.0.4` (run `38206406764`,
-  `2ebd1ee`) yayımlandı.)
+  (run `38200657904`, `fa24b20`), `windows-v0.1.0.4` (run `38206406764`,
+  `2ebd1ee`) ve `windows-v0.1.0.5` (run `38212288060`, `0589cad`) yayımlandı.)
 - [ ] (Sertifika gelince) Gerçek OV/EV store/HSM sertifikası ve güvenilir RFC3161
   servisiyle temiz ağaçtan sequence ≥ 1 üretilmiş EXE ile katalogu imzala; temiz
   Windows 10/11 doğrulamasını ve ilk imzalı yayının sequence/commit kaydını tut.

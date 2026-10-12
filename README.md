@@ -114,6 +114,10 @@ sayfasında yayınlanır; kurulum gerektirmez.
 4. Kontrol izni ayrı verilir; **Kontrolü geri al**, **Bağlantıyı kes** ve
    `Ctrl+Alt+Shift+F12` acil durdurma her an kullanılabilir.
 
+Arayüz "beklenmedik şekilde durdu" derse **Yeniden dene** yeterlidir. MSI
+Afterburner/RivaTuner gibi ekran üstü gösterge araçları bunu açılışta tetikleyebilir;
+o araçta `EdizRemote.exe` ve `msedgewebview2.exe` için uygulama algılamasını kapatın.
+
 İndirilen dosyanın kaynağı ve bütünlüğü sürüm notlarındaki SHA-256 değerleri ve
 `gh attestation verify` komutuyla doğrulanabilir
 ([Windows release rehberi](docs/WINDOWS_RELEASE.md#provenance-github-attestation-yolu)).
@@ -176,8 +180,8 @@ npm run security:audit
 Native capture ve GPU probe'ları Windows donanımı, gerçek relay testleri Docker
 ve uygun ağ ortamı gerektirir. Son kaydedilen 2026-10-12 GitHub yayın derlemesinde
 seed'li fuzz, signaling durum makinesi matrisi ve audit tatbikatı birim testleri
-dahil 600 npm testi başarılıdır (1 ortam testi atlanır); aynı derlemede 54 native
-(+1 atlanan), 113 desktop ve 234 Windows release testi geçmiştir. Audit yazım
+dahil 614 npm testi başarılıdır (1 ortam testi atlanır); aynı derlemede 54 native
+(+1 atlanan), 125 desktop ve 234 Windows release testi geçmiştir. Audit yazım
 arızasının fail-closed davranışı `npm run security:audit-drill` ile yerel Docker'da
 tatbik edilir. Bu sayılar tarihsel doğrulamadır; ayrıntılar
 [teknik rehberde](docs/DEVELOPMENT.md).
@@ -199,10 +203,10 @@ attest edilen ilk Windows paketiyle production üzerinden gerçek oturumlar
 (doğrudan P2P ve TURN relay, kontrol/revoke) kuruldu; sonrasında production
 log/audit dosyalarında hassas veri bulunmadı ve audit arıza davranışı izole
 Docker tatbikatıyla doğrulandı. Bir arıza senaryosunda görülen masaüstü çökmesi
-(NVIDIA donanım encoder'ının kapanış yarışı) aynı gün düzeltildi ve
-`windows-v0.1.0.2` yayımlandı. Faz 4'te kalan başlıca işler: relay kurtarmasında
-ICE yenilemesinin diğer bağlantıyı etkilememesi için yapılan düzeltmenin
-production'a alınması ve Windows yayınının temiz Windows 10/11 doğrulaması.
+(NVIDIA donanım encoder'ının kapanış yarışı) aynı gün düzeltildi. Relay'de görüntü
+hattı yenilemesinin kontrol bağlantısını düşürmesi ve web bileşeni çöktükten sonra
+arayüzün yeniden kurulamaması da düzeltildi; güncel sürüm `windows-v0.1.0.5`.
+Faz 4'te kalan iş Windows yayınının temiz Windows 10/11 doğrulamasıdır.
 Ücretli sertifika gelene kadar Windows sürümleri imzasız yayınlanır;
 bütünlük ve kaynak GitHub artifact attestation + SHA-256 ile doğrulanır
 (`npm run release:windows:verify-provenance`), SmartScreen ilk çalıştırmada uyarı

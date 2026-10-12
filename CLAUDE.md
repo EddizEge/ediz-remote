@@ -16,11 +16,12 @@ belgelerin yerine geçmez.
 - Faz 1, 2 ve 3 kabulü tamamlandı. **Faz 4 güvenlik sertleştirmesi devam ediyor.**
 - Faz 4'ün önemli kod ve politika işleri hazır. Pi production 2026-10-12'de
   doğrulanmış Faz 4 container'larıyla wire v3'e geçti; aynı gün production log/
-  audit örneği ve audit arıza tatbikatı tamamlandı. Production oturumunda görülen
-  masaüstü native çökmesi (ER-T15) aynı gün düzeltildi ve `windows-v0.1.0.2`
-  yayımlandı (Latest). Açık kalanlar: relay kurtarmasında ICE yenilemesinin lane
-  yalıtımı (ER-T16) ve Windows release kabulü (temiz Windows 10/11). Windows
-  için depo sahibinin 2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub
+  audit örneği ve audit arıza tatbikatı tamamlandı. Production oturumlarında
+  görülen masaüstü native çökmesi (ER-T15), relay'de ICE yenilemesinin lane
+  yalıtımı (ER-T16) ve WebView2 çöküşünden sonra arayüz kurtarması (ER-T17) aynı
+  gün düzeltildi; güncel yayın `windows-v0.1.0.5` (Latest). Açık kalan Faz 4
+  kabulü: Windows release kabulü (temiz Windows 10/11). Windows için depo
+  sahibinin 2026-10-11 kararı: sertifika gelene kadar imzasız, GitHub
   attestation ile doğrulanan provenance yolu (bölüm 6B).
 - Installer ve otomatik güncelleme Faz 5; soak ve GPU/ağ matrisi Faz 6 kapsamındadır.
 - GitHub: <https://github.com/EddizEge/ediz-remote> — public, varsayılan dal `main`.
@@ -69,13 +70,15 @@ gerçek bulguyu kapattı (iç içe `__proto__`, WPF'de eşlenmemiş surrogate).
 - Ayrı makinede dört dosyanın `gh attestation verify` sonucu ve zip ağacında
   `verify-provenance` başarılı. Production'da native çökme (ER-T15) görüldüğü için
   bu taslak yayımlanmadı.
-- **Yayımlanan sürüm (2026-10-12):** `windows-v0.1.0.2` (Actions run
-  `38200657904`, commit `fa24b20`, sequence 2, çökme düzeltmeli). Zip SHA-256
-  `2b82d6b0…1f56`; EXE SHA-256 `0ed698ec…66f0`, `FileVersion 0.1.0.2`,
-  Authenticode **NotSigned**. 4/4 attestation ve `verify-provenance` (taban 2)
-  bağımsız doğrulandı; production üzerinden 13 senaryoda çökme yok. Temiz Windows
-  10/11 kanıtı yok. Tam kimlikler `docs/WINDOWS_RELEASE.md` ve
-  `docs/PHASE4_ACCEPTANCE.md`'de.
+- **Güncel yayın (2026-10-12):** `windows-v0.1.0.5` (Actions run
+  `38212288060`, commit `0589cad`, sequence 5; ER-T15/ER-T16/ER-T17 düzeltmeli).
+  Zip SHA-256 `9b2e1b7a…785b`; EXE SHA-256 `11bbc4ee…9aa1`, `FileVersion 0.1.0.5`,
+  Authenticode **NotSigned**. 4/4 en sıkı attestation ve `verify-provenance`
+  (taban 5) bağımsız doğrulandı; production üzerinden duman testleri geçti.
+- Önceki yayınlar `windows-v0.1.0.2` (`fa24b20`, çökme düzeltmesi) ve
+  `windows-v0.1.0.4` (`2ebd1ee`, ER-T16); `windows-v0.1.0.1` ve `windows-v0.1.0.3`
+  taslak kaldı. Temiz Windows 10/11 kanıtı yok. Tam kimlikler
+  `docs/WINDOWS_RELEASE.md` ve `docs/PHASE4_ACCEPTANCE.md`'de.
 
 ### Yerel Windows artifact'i
 
@@ -140,7 +143,13 @@ Teslim anındaki önceki aday (artık yerinde değil):
   `CRITICAL_SECTION`) ile kapandı → ER-T15; NVIDIA asenkron MFT kapanış yarışı
   olarak düzeltildi (`fe10421`), `windows-v0.1.0.2` production'da 13 senaryoda
   çökmedi. Zorlanmış relay oturumlarında ICE yenilemesinin sağlıklı genel lane'i
-  de yıkıp karşı tarafı fail-closed kilitlediği görüldü → ER-T16.
+  de yıkıp karşı tarafı fail-closed kilitlediği görüldü → ER-T16; aynı gün
+  düzeltildi (`4d4b470`, `554207f`, `75d530b`).
+- ER-T16 yeniden deploy'ları (2026-10-12): aynı doğrulanmış akışla üç kez
+  (`4f848f3`, `2ebd1ee`, `0bdd4d2`), her biri öncesi arm64 kapısı 3/3 0. Canlı
+  `0bdd4d2`: application `sha256:9abeca940c6f…`, manifest `631431c4…`; geri dönüş
+  için `58bd4687b3ea…` tutuluyor. Gece boyunca 55 production koşusunda uygulama
+  çökmesi 0; audit 278 kayıt, hassas desen 0. Ayrıntı `docs/CONTAINER_RELEASE.md`.
 - Audit arıza tatbikatı: `npm run security:audit-drill` (yerel Docker, yalnız
   önekli kaynaklar) 503 → `audit_unavailable` çıkışı → restart → geri dönüş;
   2026-10-12'de dört kez `passed`.
@@ -251,9 +260,10 @@ attest edilmiş GitHub Windows yayını (`windows-v0.1.0.1` taslağı) bağıms�
 doğrulandı; 2026-10-12'de Pi production'a doğrulanmış deploy yapıldı, gerçek
 oturum sonrası production log/audit örneği alındı ve audit arıza tatbikatı geçti
 (toplu `npm test` 591 + 1 atlanan); masaüstü native çökmesi (ER-T15) düzeltildi
-ve `windows-v0.1.0.2` doğrulanıp yayımlandı. Kalan Faz 4 kabulü: ICE
-yenilemesinde lane yalıtımı (ER-T16; web'in Pi deploy'u + sequence 3 yayın +
-relay oturum tekrarı) ve temiz Windows 10/11 denemesi (gerçek oturum dahil).
+ve `windows-v0.1.0.2` doğrulanıp yayımlandı; ICE yenilemesinde lane yalıtımı
+(ER-T16) ve WebView2 arayüz kurtarması (ER-T17) düzeltildi, web Pi'ye alındı ve
+`windows-v0.1.0.5` yayımlandı (toplu `npm test` 614 + 1 atlanan, desktop 125).
+Kalan Faz 4 kabulü: temiz Windows 10/11 denemesi (gerçek oturum dahil).
 
 ### A. Pi arm64 container kabulü
 
@@ -300,7 +310,9 @@ SmartScreen uyarısı kalır (ER-T13 artık riski kabul edildi).
    geliştirme makinesinde geçti; bir arıza senaryosunda native çökme görüldü
    (ER-T15). Düzeltmeli ikinci koşu (run `38200657904`, `fa24b20`, sequence 2)
    aynı doğrulamadan geçti, production'da 13 senaryoda çökmedi ve
-   `windows-v0.1.0.2` yayımlandı. Kalan: temiz Windows 10/11 kanıtı. Bu olmadan
+   `windows-v0.1.0.2` yayımlandı. ER-T16/ER-T17 düzeltmeli `windows-v0.1.0.4`
+   (sequence 4) ve `windows-v0.1.0.5` (sequence 5) da aynı doğrulamadan geçip
+   yayımlandı. Kalan: temiz Windows 10/11 kanıtı. Bu olmadan
    kriteri karşılanmış sayma; Authenticode doğrulamasını provenance manifestiyle
    gevşetme. Yeni yayın: Actions → `windows-release` → `sequence` = önceki + 1.
 
