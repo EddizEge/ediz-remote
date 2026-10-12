@@ -36,6 +36,10 @@ import {
   resolveIceServers,
   resolveIceTransportPolicy,
 } from './iceConfiguration'
+import {
+  useLaneIceConfiguration,
+  type LaneRetryOptions,
+} from './laneIceConfiguration'
 
 export type PeerConnectionStatus =
   | 'idle'
@@ -59,7 +63,7 @@ export interface PeerConnectionState {
 }
 
 export interface PeerConnectionController extends PeerConnectionState {
-  retry: () => void
+  retry: (options?: LaneRetryOptions) => void
   sendControlEvent: (event: ControlInputEvent) => boolean
   selectRemoteDisplay: (displayId: string) => boolean
   selectQualityProfile: (profile: QualityProfile) => boolean
@@ -75,6 +79,7 @@ interface UsePeerConnectionOptions {
   localStream: MediaStream | null
   controlAllowed: boolean
   iceConfiguration: IceConfiguration | null
+  iceResetVersion: number
   sendSignal: (payload: unknown) => boolean
   subscribeToSignals: (
     lane: 'peer' | 'native-video',
@@ -224,6 +229,7 @@ export function usePeerConnection({
   localStream,
   controlAllowed,
   iceConfiguration,
+  iceResetVersion,
   sendSignal,
   subscribeToSignals,
   requestIceRefresh,
@@ -236,6 +242,13 @@ export function usePeerConnection({
 }: UsePeerConnectionOptions): PeerConnectionController {
   const [state, setState] = useState<PeerConnectionState>(IDLE_STATE)
   const [retryVersion, setRetryVersion] = useState(0)
+  const {
+    iceConfigurationRef,
+    ownIceRefreshVersion,
+    requestOwnIceRefresh,
+    awaitOwnIceRefresh,
+  } = useLaneIceConfiguration(iceConfiguration, iceResetVersion, requestIceRefresh)
+  const hasIceConfiguration = iceConfiguration !== null
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
   const pointerChannelRef = useRef<RTCDataChannel | null>(null)
@@ -271,11 +284,12 @@ export function usePeerConnection({
   onQualityProfileSelectRef.current = onQualityProfileSelect
   localMediaStateRef.current = localMediaState
 
-  const retry = useCallback(() => {
+  const retry = useCallback((options?: LaneRetryOptions) => {
     protocolFatalLatchRef.current?.reset()
     iceRestartAttemptsRef.current = 0
+    if (options?.awaitIceRefresh) awaitOwnIceRefresh()
     setRetryVersion((current) => current + 1)
-  }, [])
+  }, [awaitOwnIceRefresh])
 
   const subscribeToRemoteCursor = useCallback(
     (listener: (state: RemoteCursorState) => void) => {
@@ -389,6 +403,7 @@ export function usePeerConnection({
 
   useEffect(() => {
     const persistentFatalLatch = protocolFatalLatchRef.current!
+    const laneIceConfiguration = iceConfigurationRef.current
     const approvedSessionContinues =
       sessionState === 'active' || sessionState === 'recovering'
     if (!approvedSessionContinues) persistentFatalLatch.reset()
@@ -444,7 +459,7 @@ export function usePeerConnection({
     }
     const inboundStream = new MediaStream()
     const peerConnection = new RTCPeerConnection({
-      iceServers: resolveIceServers(iceConfiguration),
+      iceServers: resolveIceServers(laneIceConfiguration),
       bundlePolicy: 'max-bundle',
       iceTransportPolicy: resolveIceTransportPolicy(),
     })
@@ -553,7 +568,7 @@ export function usePeerConnection({
       if (iceRestartAttemptsRef.current >= 3) {
         fail(
           new Error(
-            hasTurnServer(iceConfiguration)
+            hasTurnServer(laneIceConfiguration)
               ? 'ICE bağlantısı üç yenileme denemesinden sonra kurulamadı.'
               : 'ICE bağlantısı kurulamadı ve TURN relay yapılandırılmamış.',
           ),
@@ -570,7 +585,7 @@ export function usePeerConnection({
       iceRestartTimer = window.setTimeout(() => {
         iceRestartTimer = null
         iceRestartAttemptsRef.current += 1
-        if (!requestIceRefresh()) {
+        if (!requestOwnIceRefresh()) {
           scheduleIceRestart(1_000)
         }
       }, delay)
@@ -1309,8 +1324,11 @@ export function usePeerConnection({
     }
   }, [
     enabled,
-    iceConfiguration,
-    requestIceRefresh,
+    hasIceConfiguration,
+    iceConfigurationRef,
+    iceResetVersion,
+    ownIceRefreshVersion,
+    requestOwnIceRefresh,
     retryVersion,
     role,
     sessionState,

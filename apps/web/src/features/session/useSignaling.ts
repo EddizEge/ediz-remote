@@ -169,6 +169,10 @@ export function useSignaling() {
   const [accessMode, setAccessMode] = useState<ControlAccessMode | null>(null)
   const [iceConfiguration, setIceConfiguration] =
     useState<IceConfiguration | null>(null)
+  // Bumped only when every negotiation lane must rebuild with the new
+  // configuration (approval and resume). A bare `ice_configuration` answers
+  // one lane's own `refresh_ice` and leaves this version unchanged.
+  const [iceResetVersion, setIceResetVersion] = useState(0)
   const [activity, setActivity] = useState(DEFAULT_ACTIVITY)
   const [errorCode, setErrorCode] = useState<SignalingIssueCode | null>(null)
   const error = signalingIssueMessage(errorCode)
@@ -381,6 +385,7 @@ export function useSignaling() {
                 break
               }
               setIceConfiguration(parsed.data)
+              setIceResetVersion((current) => current + 1)
             }
             setSessionRole('guest')
             controlRevokedForSessionRef.current = false
@@ -401,6 +406,7 @@ export function useSignaling() {
                 break
               }
               setIceConfiguration(parsed.data)
+              setIceResetVersion((current) => current + 1)
             }
             setSessionRole('host')
             controlRevokedForSessionRef.current = false
@@ -421,6 +427,7 @@ export function useSignaling() {
                 break
               }
               setIceConfiguration(parsed.data)
+              setIceResetVersion((current) => current + 1)
             }
             resumeTokenRef.current = message.resumeToken
             reconnectGraceSecondsRef.current = message.reconnectGraceSeconds
@@ -467,6 +474,7 @@ export function useSignaling() {
                 break
               }
               setIceConfiguration(parsed.data)
+              setIceResetVersion((current) => current + 1)
             }
             setSessionState('active')
             setActivity('Karşı cihaz geri döndü. WebRTC yeniden kuruluyor.')
@@ -848,6 +856,7 @@ export function useSignaling() {
     incomingRequest,
     accessMode,
     iceConfiguration,
+    iceResetVersion,
     activity,
     error,
     errorCode,

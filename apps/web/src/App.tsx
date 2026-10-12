@@ -83,6 +83,7 @@ function App() {
     sessionState: signaling.sessionState,
     role: signaling.sessionRole,
     iceConfiguration: signaling.iceConfiguration,
+    iceResetVersion: signaling.iceResetVersion,
     sendSignal: signaling.sendSignal,
     subscribeToSignals: signaling.subscribeToSignals,
     requestIceRefresh: signaling.requestIceRefresh,
@@ -102,6 +103,7 @@ function App() {
     localStream: localScreenStream,
     controlAllowed: signaling.accessMode === 'control',
     iceConfiguration: signaling.iceConfiguration,
+    iceResetVersion: signaling.iceResetVersion,
     sendSignal: signaling.sendSignal,
     subscribeToSignals: signaling.subscribeToSignals,
     requestIceRefresh: signaling.requestIceRefresh,
@@ -174,14 +176,13 @@ function App() {
     } else if (action === 'retry-session') {
       if (signaling.sessionRole !== 'host') return
       clearSignalingError()
-      requestIceRefresh()
-      retryPeerConnection()
-      retryNativeVideo()
+      const awaitIceRefresh = requestIceRefresh()
+      retryPeerConnection({ awaitIceRefresh })
+      retryNativeVideo({ awaitIceRefresh })
     } else if (action === 'retry-video') {
       if (signaling.sessionRole !== 'host') return
       clearSignalingError()
-      requestIceRefresh()
-      retryNativeVideo()
+      retryNativeVideo({ awaitIceRefresh: requestIceRefresh() })
     } else if (action === 'retry-desktop') {
       retryDesktop()
       if (
