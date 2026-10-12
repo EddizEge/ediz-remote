@@ -244,7 +244,12 @@ kullanıcının yeniden denemesini bekler. Host'ta `connected` gelirse bekleyen
 yeniden offer iptal edilir; kısa bir `disconnected` sağlıklı akışı yeniden kurmaz.
 Guest native alıcısı `failed` olduktan sonra geç gelen uzak adayla yeniden
 `connecting`/`connected` olursa bekleyen yenileme iptal edilir ve canlanan eş
-kapatılmaz; yeniden düşerse aynı backoff yeniden zamanlanır. Canlanma yalnız yeni
+kapatılmaz; yeniden düşerse aynı backoff yeniden zamanlanır. Host offer'ı yalnız
+`host` adayıyla gönderip `srflx`/`relay` adaylarını ~1 sn sonra iletebildiği için,
+güncel negotiation'da hiç `connected` olmamış guest alıcısı ilk düşüşte 1 sn
+yerine en az 5 sn bekler (geç aday toleransı); daha önce bağlanmış alıcı 1/2/4 sn
+backoff'u kullanır. Bilgi her yeni offer'da sıfırlanır; üç deneme sınırı ve
+fail-closed kilit aynıdır. Canlanma yalnız yeni
 uzak aday ya da yeni offer ile olur; aday kuyrukları ve negotiation kimliği sınırı
 değişmez. Sunucu aktif/onaylı üyelik olmadan bu isteği kabul etmez.
 

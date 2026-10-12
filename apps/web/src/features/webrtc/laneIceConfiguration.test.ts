@@ -133,7 +133,10 @@ vi.mock('../desktop/useDesktopBridge', () => ({
 }))
 
 import { usePeerConnection } from './usePeerConnection'
-import { useNativeVideoPeer } from './useNativeVideoPeer'
+import {
+  NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS,
+  useNativeVideoPeer,
+} from './useNativeVideoPeer'
 import type { SessionRole, SessionState } from '../session/useSignaling'
 
 type Listener = (event: Record<string, unknown>) => void
@@ -189,6 +192,10 @@ class FakePeerConnection {
 
   async createOffer() {
     return { type: 'offer' as const, sdp: 'v=0\r\na=ice-ufrag:abcd\r\n' }
+  }
+
+  async createAnswer() {
+    return { type: 'answer' as const, sdp: 'v=0\r\na=ice-ufrag:efgh\r\n' }
   }
 
   async setLocalDescription(description: RTCSessionDescriptionInit) {
@@ -259,7 +266,32 @@ interface SignalingProps {
 
 const NO_DISPLAYS: never[] = []
 const sendSignal = vi.fn(() => true)
-const subscribeToSignals = () => () => true
+const signalHandlers = new Set<(payload: unknown) => void>()
+const subscribeToSignals = (
+  lane: 'peer' | 'native-video',
+  handler: (payload: unknown) => void,
+) => {
+  if (lane !== 'native-video') return () => true
+  signalHandlers.add(handler)
+  return () => signalHandlers.delete(handler)
+}
+
+async function deliverNativeOffer(): Promise<string> {
+  const negotiationId = crypto.randomUUID()
+  for (const handler of [...signalHandlers]) {
+    handler({
+      channel: 'native-video',
+      version: 2,
+      signal: {
+        kind: 'session-description',
+        negotiationId,
+        description: { type: 'offer', sdp: 'v=0' },
+      },
+    })
+  }
+  await vi.advanceTimersByTimeAsync(0)
+  return negotiationId
+}
 let lastIceRefreshAt = Number.NEGATIVE_INFINITY
 // Mirrors useSignaling: one shared refresh, throttled to once per second.
 const requestIceRefresh = vi.fn(() => {
@@ -317,6 +349,7 @@ beforeEach(() => {
   lastIceRefreshAt = Number.NEGATIVE_INFINITY
   requestIceRefresh.mockClear()
   sendSignal.mockClear()
+  signalHandlers.clear()
   vi.stubGlobal('window', {
     setTimeout,
     clearTimeout,
@@ -348,7 +381,7 @@ describe('independent ICE refresh per negotiation lane', () => {
     expect(peers('native-video')).toHaveLength(1)
 
     nativePeer.emitConnectionState('failed')
-    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS)
     expect(requestIceRefresh).toHaveBeenCalledTimes(1)
 
     props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
@@ -405,6 +438,8 @@ describe('independent ICE refresh per negotiation lane', () => {
     const [generalPeer] = peers('peer')
     const [nativePeer] = peers('native-video')
 
+    // The native receiver had connected, so it keeps the regular backoff.
+    nativePeer.emitConnectionState('connected')
     generalPeer.emitConnectionState('failed')
     nativePeer.emitConnectionState('failed')
     await vi.advanceTimersByTimeAsync(500)
@@ -486,7 +521,7 @@ describe('independent ICE refresh per negotiation lane', () => {
     }
     renderLanes(props)
     peers('native-video')[0].emitConnectionState('failed')
-    await vi.advanceTimersByTimeAsync(1_000)
+    await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS)
     expect(requestIceRefresh).toHaveBeenCalledTimes(1)
 
     props = {
@@ -525,7 +560,60 @@ describe('guest native receiver revival', () => {
     expect(nativePeer.closed).toBe(false)
 
     // The revived attempt fails again: recovery is scheduled anew with the
-    // unchanged first backoff, then rebuilds only the native receiver.
+    // unchanged first delay, then rebuilds only the native receiver.
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS - 1)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+    props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
+    renderLanes(props)
+    expect(nativePeer.closed).toBe(true)
+    expect(openPeers('native-video')).toHaveLength(1)
+  })
+
+  it('waits for late candidates before rebuilding a never-connected receiver', async () => {
+    let { props, nativePeer } = startGuest()
+    await deliverNativeOffer()
+
+    // Only the host's private candidate arrived; the 1 s backoff would close
+    // the receiver before the trickled srflx/relay candidates (~1 s later).
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativePeer.closed).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS - 1_001)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+
+    props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
+    renderLanes(props)
+    expect(nativePeer.closed).toBe(true)
+    expect(openPeers('native-video')).toHaveLength(1)
+  })
+
+  it('keeps a never-connected receiver that late candidates revive', async () => {
+    const { nativePeer } = startGuest()
+    await deliverNativeOffer()
+
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(1_050)
+    nativePeer.emitConnectionState('connecting')
+    nativePeer.emitConnectionState('connected')
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    expect(nativePeer.closed).toBe(false)
+  })
+
+  it('keeps the regular backoff after a connected receiver drops', async () => {
+    let { props, nativePeer } = startGuest()
+    await deliverNativeOffer()
+    nativePeer.emitConnectionState('connected')
+
     nativePeer.emitConnectionState('failed')
     await vi.advanceTimersByTimeAsync(999)
     expect(requestIceRefresh).not.toHaveBeenCalled()
@@ -534,7 +622,53 @@ describe('guest native receiver revival', () => {
     props = { ...props, iceConfiguration: iceConfigurationFor('native-refresh') }
     renderLanes(props)
     expect(nativePeer.closed).toBe(true)
-    expect(openPeers('native-video')).toHaveLength(1)
+  })
+
+  it('restores the tolerance for each new offer', async () => {
+    const { nativePeer } = startGuest()
+    await deliverNativeOffer()
+    nativePeer.emitConnectionState('connected')
+
+    // The host re-offers (ICE restart) on the same receiver; the new
+    // negotiation has not connected yet.
+    await deliverNativeOffer()
+    nativePeer.emitConnectionState('failed')
+    await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS - 1)
+    expect(requestIceRefresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(1)
+  })
+
+  it('fails closed after three never-connected recoveries', async () => {
+    let { props } = startGuest()
+
+    for (const attempt of [1, 2, 3]) {
+      const nativePeer = openPeers('native-video')[0]
+      await deliverNativeOffer()
+      nativePeer.emitConnectionState('failed')
+      await vi.advanceTimersByTimeAsync(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS - 1)
+      expect(requestIceRefresh).toHaveBeenCalledTimes(attempt - 1)
+      await vi.advanceTimersByTimeAsync(1)
+      expect(requestIceRefresh).toHaveBeenCalledTimes(attempt)
+      props = {
+        ...props,
+        iceConfiguration: iceConfigurationFor('native-refresh-' + attempt),
+      }
+      renderLanes(props)
+      expect(nativePeer.closed).toBe(true)
+      expect(peers('native-video')).toHaveLength(attempt + 1)
+    }
+
+    const lastPeer = openPeers('native-video')[0]
+    await deliverNativeOffer()
+    lastPeer.emitConnectionState('failed')
+    const lanes = renderLanes(props)
+    expect(lastPeer.closed).toBe(true)
+    expect(lanes.native.status).toBe('failed')
+    expect(lanes.native.error).toBe('Güvenli ekran görüntüsü bağlantısı kurulamadı.')
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(requestIceRefresh).toHaveBeenCalledTimes(3)
+    expect(peers('native-video')).toHaveLength(4)
   })
 
   it('cancels pending recovery when the receiver reconnects', async () => {

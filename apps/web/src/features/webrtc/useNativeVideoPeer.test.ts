@@ -3,7 +3,9 @@ import { PendingIceCandidateQueue } from './negotiation'
 import {
   DesktopNativeNegotiationTracker,
   MAX_DESKTOP_NATIVE_NEGOTIATIONS,
+  NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS,
   NativeNegotiationFatalLatch,
+  nativeRecoveryDelay,
   parseDesktopNativeMessage,
   toSafeNativeTransportFailureState,
   tripFatalNativeNegotiation,
@@ -341,6 +343,19 @@ describe('native guest transport failure state', () => {
       expect(next.active).toBe(true)
     },
   )
+})
+
+describe('native recovery delay', () => {
+  it('keeps the exponential backoff after the negotiation connected', () => {
+    expect([0, 1, 2].map((attempts) => nativeRecoveryDelay(attempts, true)))
+      .toEqual([1_000, 2_000, 4_000])
+  })
+
+  it('waits at least the late-candidate tolerance before a first connection', () => {
+    expect(NATIVE_UNCONNECTED_FAILURE_TOLERANCE_MS).toBe(5_000)
+    expect([0, 1, 2, 3].map((attempts) => nativeRecoveryDelay(attempts, false)))
+      .toEqual([5_000, 5_000, 5_000, 8_000])
+  })
 })
 
 function negotiationIdForIndex(index: number): string {
