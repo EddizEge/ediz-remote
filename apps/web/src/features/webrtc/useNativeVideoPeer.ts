@@ -19,6 +19,10 @@ import {
   resolveIceTransportPolicy,
 } from './iceConfiguration'
 import {
+  useLaneIceConfiguration,
+  type LaneRetryOptions,
+} from './laneIceConfiguration'
+import {
   PendingIceCandidateQueue,
   bindLocalIceGeneration,
   resolveLocalCandidateNegotiationId,
@@ -41,7 +45,7 @@ export interface NativeVideoPeerState {
 }
 
 export interface NativeVideoPeerController extends NativeVideoPeerState {
-  retry: () => void
+  retry: (options?: LaneRetryOptions) => void
 }
 
 export interface NativeVideoMetrics {
@@ -58,6 +62,7 @@ interface UseNativeVideoPeerOptions {
   sessionState: SessionState
   role: SessionRole | null
   iceConfiguration: IceConfiguration | null
+  iceResetVersion: number
   sendSignal: (payload: unknown) => boolean
   subscribeToSignals: (
     lane: 'peer' | 'native-video',
@@ -94,25 +99,35 @@ export function useNativeVideoPeer({
   sessionState,
   role,
   iceConfiguration,
+  iceResetVersion,
   sendSignal,
   subscribeToSignals,
   requestIceRefresh,
 }: UseNativeVideoPeerOptions): NativeVideoPeerController {
   const [state, setState] = useState<NativeVideoPeerState>(IDLE_STATE)
   const [retryVersion, setRetryVersion] = useState(0)
+  const {
+    iceConfigurationRef,
+    ownIceRefreshVersion,
+    requestOwnIceRefresh,
+    awaitOwnIceRefresh,
+  } = useLaneIceConfiguration(iceConfiguration, iceResetVersion, requestIceRefresh)
+  const hasIceConfiguration = iceConfiguration !== null
   const recoveryAttemptsRef = useRef(0)
   const fatalLatchRef = useRef<NativeNegotiationFatalLatch | null>(null)
   if (fatalLatchRef.current === null) {
     fatalLatchRef.current = new NativeNegotiationFatalLatch()
   }
-  const retry = useCallback(() => {
+  const retry = useCallback((options?: LaneRetryOptions) => {
     fatalLatchRef.current?.reset()
     recoveryAttemptsRef.current = 0
+    if (options?.awaitIceRefresh) awaitOwnIceRefresh()
     setRetryVersion((current) => current + 1)
-  }, [])
+  }, [awaitOwnIceRefresh])
 
   useEffect(() => {
     const fatalLatch = fatalLatchRef.current!
+    const laneIceConfiguration = iceConfigurationRef.current
     const approvedSessionContinues =
       sessionState === 'active' || sessionState === 'recovering'
     if (!approvedSessionContinues) fatalLatch.reset()
@@ -207,7 +222,7 @@ export function useNativeVideoPeer({
       recoveryTimer = window.setTimeout(() => {
         recoveryTimer = null
         recoveryAttemptsRef.current += 1
-        if (!requestIceRefresh()) scheduleRecovery()
+        if (!requestOwnIceRefresh()) scheduleRecovery()
       }, 1_000 * 2 ** recoveryAttemptsRef.current)
     }
 
@@ -252,6 +267,15 @@ export function useNativeVideoPeer({
                   ? 'Windows ekran aktarımı başlatılamadı.'
                   : null,
             }))
+            if (status === 'connected') {
+              recoveryAttemptsRef.current = 0
+            } else if (status === 'disconnected') {
+              // Only the native peer transport reports disconnected/closed,
+              // e.g. after the guest rebuilt its receiver. Re-offer with a
+              // fresh credential; bridge and negotiation faults report
+              // `failed` and keep waiting for the user's retry.
+              scheduleRecovery()
+            }
           } else if (message.type === 'desktop.native-video.metrics') {
             setState((current) => ({ ...current, metrics: message.payload }))
           }
@@ -260,7 +284,7 @@ export function useNativeVideoPeer({
 
     if (!nativeHost) {
       peerConnection = new RTCPeerConnection({
-        iceServers: resolveIceServers(iceConfiguration),
+        iceServers: resolveIceServers(laneIceConfiguration),
         bundlePolicy: 'max-bundle',
         iceTransportPolicy: resolveIceTransportPolicy(),
       })
@@ -459,7 +483,7 @@ export function useNativeVideoPeer({
         channel: 'native-video',
         version: 2,
         sessionEpoch: bridgeSessionEpoch,
-        iceServers: resolveIceServers(iceConfiguration),
+        iceServers: resolveIceServers(laneIceConfiguration),
       })
     }
 
@@ -475,8 +499,11 @@ export function useNativeVideoPeer({
     }
   }, [
     enabled,
-    iceConfiguration,
-    requestIceRefresh,
+    hasIceConfiguration,
+    iceConfigurationRef,
+    iceResetVersion,
+    ownIceRefreshVersion,
+    requestOwnIceRefresh,
     retryVersion,
     role,
     sessionState,

@@ -336,6 +336,38 @@ describe('signaling socket lifecycle', () => {
     expect(resumed.errorCode).toBeNull()
   })
 
+  it('resets every negotiation lane only on approval and resume', () => {
+    useRenderSignaling(true)
+    const socket = MockWebSocket.instances[0]
+    deliverReady(socket)
+    deliverSessionCreated(socket, '111111')
+    expect(useRenderSignaling().iceResetVersion).toBe(0)
+    socket.message({
+      type: 'peer_joined',
+      peerId,
+      accessMode: 'control',
+      iceConfiguration,
+      resumeToken,
+      reconnectGraceSeconds: 30,
+    })
+    const joined = useRenderSignaling()
+    expect(joined.iceResetVersion).toBe(1)
+
+    // A lane's own refresh answer replaces the configuration only.
+    const refreshed = { ...iceConfiguration, iceServers: [{ urls: ['stun:fresh.example.test'] }] }
+    socket.message({ type: 'ice_configuration', iceConfiguration: refreshed })
+    const afterRefresh = useRenderSignaling()
+    expect(afterRefresh.iceConfiguration).toEqual(refreshed)
+    expect(afterRefresh.iceResetVersion).toBe(1)
+
+    socket.message({ type: 'peer_suspended', reconnectUntil: expiry })
+    expect(useRenderSignaling().iceResetVersion).toBe(1)
+    socket.message({ type: 'peer_resumed', peerId, iceConfiguration })
+    const resumed = useRenderSignaling()
+    expect(resumed.sessionState).toBe('active')
+    expect(resumed.iceResetVersion).toBe(2)
+  })
+
   it('clears a throttled create latch so the user can request a new code', () => {
     const initial = useRenderSignaling(true)
     const socket = MockWebSocket.instances[0]

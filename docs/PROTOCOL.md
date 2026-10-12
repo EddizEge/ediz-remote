@@ -220,8 +220,22 @@ yapılandırması gönderir. Bu devralma yalnızca aktif onaylı üyeliğin gün
 token'ıyla mümkündür; döndürülen eski token tekrar kullanılamaz.
 
 WebRTC `failed` olduğunda veya `disconnected` durumu kısa beklemeyi aştığında
-istemci en fazla üç kez exponential backoff ile `refresh_ice` ister. Güncel
-credential geldiğinde eş bağlantıları kontrollü biçimde yeniden oluşturulur.
+ilgili lane (genel peer ya da `native-video`) en fazla üç kez exponential backoff
+ile `refresh_ice` ister. Sunucu `ice_configuration` yanıtını yalnız isteyen üyeye
+gönderir ve yanıt lane kimliği taşımaz; istemci her lane için kendi yenilemesini
+bekleyip beklemediğini ayrı tutar. Güncel credential geldiğinde yalnız yenilemeyi
+isteyen lane'in eşi kontrollü biçimde yeniden oluşturulur; diğer lane'in sağlıklı
+eşine dokunulmaz, yeni credential o lane'in sonraki yeniden kurulumunda kullanılır.
+Böylece bir lane'in kurtarması karşı tarafta diğer lane'i uzak abort ile
+fail-closed kilide düşürmez. Onay, `session_resumed` ve `peer_resumed` ile gelen
+yapılandırma iki lane'i birlikte yeniden kurar. İstemcideki ortak saniyede bir
+yenileme sınırı bir lane'in isteğini geri çevirirse o lane kendi backoff'uyla
+yeniden ister. Host'un bağlantıyı/görüntüyü yeniden deneme eylemi ilgili
+lane'leri hemen, yenileme isteği gönderildiyse yanıt gelince bir kez daha taze
+credential ile kurar. `native-video` offer'ını host ürettiği için guest yalnız
+native alıcısını yeniden kurduğunda host, WPF native eşinin `disconnected`/`closed`
+bildirimini aynı sınırlı backoff ile kendi yenilemesine çevirip yeni offer üretir;
+köprü veya negotiation kaynaklı `failed` kullanıcının yeniden denemesini bekler.
 Sunucu aktif/onaylı üyelik olmadan bu isteği kabul etmez.
 
 `peer_unavailable` aynı onaylı üyeliğin `accessMode` değerini değiştirmez;
