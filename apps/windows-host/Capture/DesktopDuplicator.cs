@@ -34,22 +34,32 @@ internal sealed class DesktopDuplicator : IDisposable
     {
         _output = output;
         _factory = CreateDXGIFactory1<IDXGIFactory1>();
+        try
+        {
+            var adapterResult = _factory.EnumAdapters1((uint)output.AdapterIndex, out _adapter);
+            DisplayCatalog.ThrowIfFailed(adapterResult, "Seçilen ekran kartı açılamadı");
+            var outputResult = _adapter.EnumOutputs((uint)output.OutputIndex, out _dxgiOutput);
+            DisplayCatalog.ThrowIfFailed(outputResult, "Seçilen ekran çıkışı açılamadı");
+            _output1 = _dxgiOutput.QueryInterface<IDXGIOutput1>();
 
-        var adapterResult = _factory.EnumAdapters1((uint)output.AdapterIndex, out _adapter);
-        DisplayCatalog.ThrowIfFailed(adapterResult, "Seçilen ekran kartı açılamadı");
-        var outputResult = _adapter.EnumOutputs((uint)output.OutputIndex, out _dxgiOutput);
-        DisplayCatalog.ThrowIfFailed(outputResult, "Seçilen ekran çıkışı açılamadı");
-        _output1 = _dxgiOutput.QueryInterface<IDXGIOutput1>();
-
-        var deviceResult = D3D11CreateDevice(
-            _adapter,
-            DriverType.Unknown,
-            DeviceCreationFlags.BgraSupport,
-            null!,
-            out _device,
-            out _context);
-        DisplayCatalog.ThrowIfFailed(deviceResult, "Direct3D 11 cihazı oluşturulamadı");
-        _duplication = _output1.DuplicateOutput(_device);
+            var deviceResult = D3D11CreateDevice(
+                _adapter,
+                DriverType.Unknown,
+                DeviceCreationFlags.BgraSupport,
+                null!,
+                out _device,
+                out _context);
+            DisplayCatalog.ThrowIfFailed(deviceResult, "Direct3D 11 cihazı oluşturulamadı");
+            Direct3DMultithread.Enable(_device);
+            _duplication = _output1.DuplicateOutput(_device);
+        }
+        catch
+        {
+            // Recovery retries construct new duplicators; a failed attempt
+            // must not leave its device and DXGI objects unreleased.
+            ReleaseInterfaces();
+            throw;
+        }
     }
 
     public async Task<CaptureProbeResult> ProbeAsync(CancellationToken cancellationToken)
@@ -247,13 +257,18 @@ internal sealed class DesktopDuplicator : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        ReleaseInterfaces();
+    }
+
+    private void ReleaseInterfaces()
+    {
         _stagingTexture?.Dispose();
-        _duplication.Dispose();
-        _context.Dispose();
-        _device.Dispose();
-        _output1.Dispose();
-        _dxgiOutput.Dispose();
-        _adapter.Dispose();
-        _factory.Dispose();
+        _duplication?.Dispose();
+        _context?.Dispose();
+        _device?.Dispose();
+        _output1?.Dispose();
+        _dxgiOutput?.Dispose();
+        _adapter?.Dispose();
+        _factory?.Dispose();
     }
 }

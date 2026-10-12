@@ -93,6 +93,7 @@ internal sealed class NativeDesktopStreamSession(
             output.Height,
             options.FrameRate,
             currentBitrate));
+        streamControl.EncoderStarted();
         var packetizer = new H264RtpPacketizer(
             options.MaximumRtpPayloadLength,
             options.PayloadType);
@@ -135,6 +136,7 @@ internal sealed class NativeDesktopStreamSession(
                         output.Height,
                         options.FrameRate,
                         directive.TargetBitrate));
+                    streamControl.EncoderStarted();
                     currentBitrate = directive.TargetBitrate;
                     encoderRestarts++;
                 }

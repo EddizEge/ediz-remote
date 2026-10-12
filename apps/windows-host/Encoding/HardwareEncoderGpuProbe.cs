@@ -22,7 +22,7 @@ internal static class HardwareEncoderGpuProbe
 {
     public static HardwareEncoderGpuReport Probe(DisplayOutput output)
     {
-        var startup = MediaFactory.MFStartup();
+        var startup = MediaFoundationPlatform.EnsureStarted();
         if (startup.Failure)
         {
             return Failed(output, $"Media Foundation başlatılamadı: {startup.Description}");
@@ -48,6 +48,7 @@ internal static class HardwareEncoderGpuProbe
                 using (context)
                 using (var manager = MediaFactory.MFCreateDXGIDeviceManager())
                 {
+                    Direct3DMultithread.Enable(device);
                     managerCreated = true;
                     var resetResult = manager.ResetDevice(device);
                     DisplayCatalog.ThrowIfFailed(resetResult, "Media Foundation DXGI cihaz yöneticisi ayarlanamadı");
@@ -71,15 +72,22 @@ internal static class HardwareEncoderGpuProbe
 
                     var encoderName = ReadEncoderName(activation);
                     using var transform = activation.ActivateObject<IMFTransform>();
-                    using var attributes = transform.Attributes;
-                    var unlockResult = attributes.Set(
-                        TransformAttributeKeys.TransformAsyncUnlock,
-                        true);
-                    DisplayCatalog.ThrowIfFailed(unlockResult, "Asenkron encoder kilidi açılamadı");
+                    try
+                    {
+                        using var attributes = transform.Attributes;
+                        var unlockResult = attributes.Set(
+                            TransformAttributeKeys.TransformAsyncUnlock,
+                            true);
+                        DisplayCatalog.ThrowIfFailed(unlockResult, "Asenkron encoder kilidi açılamadı");
 
-                    transform.ProcessMessage(
-                        TMessageType.MessageSetD3DManager,
-                        new UIntPtr(unchecked((ulong)manager.NativePointer.ToInt64())));
+                        transform.ProcessMessage(
+                            TMessageType.MessageSetD3DManager,
+                            new UIntPtr(unchecked((ulong)manager.NativePointer.ToInt64())));
+                    }
+                    finally
+                    {
+                        HardwareEncoderCatalog.ShutdownActivatedObject(activation);
+                    }
 
                     var surfaceDescription = new Texture2DDescription
                     {
@@ -126,10 +134,6 @@ internal static class HardwareEncoderGpuProbe
                 output,
                 "GPU encoder probu tamamlanamadı.",
                 managerCreated);
-        }
-        finally
-        {
-            MediaFactory.MFShutdown();
         }
     }
 

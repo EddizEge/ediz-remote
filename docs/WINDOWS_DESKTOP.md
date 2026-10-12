@@ -187,8 +187,17 @@ alt sistemin açık hatasını temizlemez.
   verilmezse pencere görünür kalır.
 - Gerçek çıkışta yeni kontrol girdisi önce kapatılır ve tutulan girişler bırakılır;
   global hotkey çözülür, native stream/ICE/encoder iptal edilip beklenir, ardından
-  WebView ve synchronization kaynakları dispose edilir. Windows oturum kapanışı
-  tepsiye gizleme davranışını atlayarak aynı temiz çıkış yoluna girer.
+  WebView dispose edilir. Windows oturum kapanışı tepsiye gizleme davranışını
+  atlayarak aynı temiz çıkış yoluna girer.
+- Kapanış, aktif oturumla birlikte ekran/kalite değişimi gibi kapı içinde hâlâ
+  süren native oturum dispose'larını da en fazla 30 saniye bekler. Bekleme
+  dispatcher'a geri dönmeyen paylaşılan dispose görevini kullanır; önceki
+  `GetAwaiter().GetResult()` çağrısı stream döngüsü meşgulken UI iş parçacığını
+  kilitleyebiliyordu. Mutation kapısı, kapanış sonrası çözülen bir köprü
+  işleminin bırakabilmesi için dispose edilmez.
+- Native oturum ayrıldıktan sonra (ekran/kalite değişimi veya durdurma) gelen,
+  biçimi geçerli eski nesil sinyali yok sayılır; yeni oturumu fail-closed kapanış
+  yoluna sokmaz. Biçimi geçersiz sinyal eskisi gibi oturumu kapatır.
 
 ## Geliştirme komutları
 

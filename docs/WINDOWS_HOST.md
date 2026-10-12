@@ -106,7 +106,12 @@ Sonraki katmanlar şu sözleşmeyle ayrılır:
 - Son 4096 RTP paketi sıra numarasıyla tutulur; NACK PID/BLP alanı açılarak bulunan
   paketler aynı RTP kimliğiyle tekrar SRTP hattına verilir.
 - PLI veya önbellekte bulunamayan NACK, donanım encoder'ını yeniden başlatır; ilk
-  çıktı SPS/PPS ve IDR ile decoder'ı yeniden eşzamanlar.
+  çıktı SPS/PPS ve IDR ile decoder'ı yeniden eşzamanlar. Keyframe kaynaklı
+  yeniden kurulum son encoder başlangıcından en az 1 saniye sonra yapılır; arada
+  gelen istekler tek bekleyen istekte birleşir. Yeni asenkron MFT'nin kurulumu
+  yüzlerce ms sürer ve ilk IDR ancak ikinci girdi karesinden sonra gelir; her
+  PLI'da yeniden kurulum kayıplı relay yolunda hiç çıktı üretmeyen bir döngüye
+  giriyordu (2026-10-12 yerel ölçümü).
 - RTCP receiver report paket kaybı yüksekse hedef bitrate çarpımsal düşürülür;
   üç iyi rapordan sonra kontrollü artırılır. Değişiklikler en fazla iki saniyede
   bir encoder yenilemesi doğurur.
@@ -118,6 +123,39 @@ Sonraki katmanlar şu sözleşmeyle ayrılır:
   normalize edilir. Ayrı hardware pointer görünürse değişiklikler en fazla
   capture FPS'i hızında yayınlanır; değişmeyen konum saniyelik heartbeat ile
   yeni DataChannel'a tekrar ulaşır ve stream kapanışında görünmez durum gönderilir.
+
+## Native kaynak yaşam döngüsü
+
+- Capture/NV12 dönüşüm döngüsü ile asenkron Media Foundation encoder'ın iş
+  parçacıkları aynı D3D11 immediate context'i paylaşır; cihaz bu yüzden
+  `ID3D11Multithread::SetMultithreadProtected(TRUE)` ile açılır (GPU probe
+  cihazı dahil).
+- Media Foundation süreç başına bir kez başlatılır ve kapatılmaz. Encoder başına
+  `MFStartup`/`MFShutdown` çifti, encoder nesilleri arasında platformu kapatıp
+  donanım MFT'lerinin hâlâ sönümlenen iş parçacıklarının altından iş kuyruklarını
+  kaldırabiliyordu.
+- Etkinleştirilen her donanım MFT (encoder, katalog ve GPU probu) son referans
+  bırakılmadan önce `IMFActivate::ShutdownObject` ile kapatılır; NVIDIA asenkron
+  MFT'si `IMFShutdown` sunmaz. `MFTEnumEx` koleksiyonu dispose edilirken bütün
+  activation sarmalayıcılarını bıraktığından encoder kendi activation
+  referansını ayrıca tutar.
+- NVIDIA asenkron MFT'si işlerini kendi Media Foundation seri iş kuyruğunda
+  çalıştırır ve kuyruktaki iş encoder'ı canlı tutmaz. Son COM referansı
+  bırakıldığında hâlâ bekleyen bir iş, silinmiş critical section'a girer:
+  `c0000005`, `ntdll+0x1a12d`, yığında `RTWorkQ` → `nvEncMFTH264x` →
+  `RtlEnterCriticalSection`. 2026-10-12'de yerel stres testinde production ile
+  aynı imzayla yeniden üretildi. Bu yüzden her encoder nesli önce boşaltılır:
+  `END_OF_STREAM` + `DRAIN` gönderilir, olaylar `METransformDrainComplete`
+  gelene kadar (en fazla 2 sn) pompalanır ve bekleyen çıktı atılır; boşaltma
+  başarısız olursa `FLUSH` yoluna düşülür. Ardından `END_STREAMING` gelir.
+  Boşaltma tek başına çökmeyi durdurmadı; event generator, transform, activation
+  (`ShutdownObject` dahil) ve DXGI device manager'ın son release'i 1 saniyelik
+  bekleme sonrasına ertelenir. Keyframe yeniden kurulum sınırı sayesinde bu
+  beklemede aynı anda yalnız birkaç eski encoder bulunur.
+- `NativeVideoHostSession` dispose'u tek ve paylaşılan bir görevdir: thread
+  pool'da çalışır, çağıranın synchronization context'ine dönmez, stream döngüsü
+  bitmeden peer'i ve capture/encoder graph'ını bırakmaz. Dispose'dan sonra gelen
+  SIPSorcery durum olayı yok sayılır.
 
 ## Mevcut sınırlar
 
