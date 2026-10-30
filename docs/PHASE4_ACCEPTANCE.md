@@ -8,8 +8,7 @@ eksiktir. Bu belge Faz 4 kanıtlarını tek yerde toplar; bir satırın
 `Karşılandı` olması yalnız belirtilen kanıt türü için geçerlidir ve production
 deployment yapıldığı anlamına gelmez.
 
-Kaynaklar: [`AGENTS.md`](../AGENTS.md) §5 ve §7 Faz 4,
-[`PHASE4_PLAN.md`](PHASE4_PLAN.md), [`THREAT_MODEL.md`](THREAT_MODEL.md) §6 ve §11,
+Kaynaklar: [`PHASE4_PLAN.md`](PHASE4_PLAN.md), [`THREAT_MODEL.md`](THREAT_MODEL.md) §6 ve §11,
 [`CONTAINER_RELEASE.md`](CONTAINER_RELEASE.md),
 [`WINDOWS_RELEASE.md`](WINDOWS_RELEASE.md), [`DEVELOPMENT.md`](DEVELOPMENT.md),
 [`SECURITY_AUDIT.md`](SECURITY_AUDIT.md) ve [`PROTOCOL.md`](PROTOCOL.md).
