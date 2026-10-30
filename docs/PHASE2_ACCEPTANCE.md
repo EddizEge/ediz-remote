@@ -66,7 +66,7 @@ Faz 2'nin bütün kabul kriterleri 2026-08-13 tarihinde tamamlandı.
 Public test kurulumu ve komutları `docs/TURN.md` dosyasındadır. Bu kurulumda Pi,
 sabit public IPv4 ve port yönlendirme kullanılabildiği için ayrıca VPS gerekmedi.
 
-2026-08-13 tarihinde Pi 5 (`192.168.1.28`) üzerinde mevcut 19 Compose projesine
+2026-08-13 tarihinde Pi 5 üzerinde, mevcut diğer Compose projelerine
 dokunulmadan ayrı `/opt/ediz-remote` dizininde coturn kuruldu. Secret root
 sahipli `0600` `.env` dosyasında tutuluyor; container `nobody:nogroup`,
 `cap_drop: ALL`, yalnızca `NET_BIND_SERVICE`, host network ve
